@@ -1,0 +1,2 @@
+PIP_ANALYTICS_GOOGLE_EMAIL=your.email@example.com
+GARGLE_OAUTH_CACHE=.secrets/gargle

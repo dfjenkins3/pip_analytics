@@ -1,0 +1,624 @@
+---
+title: "Pips Macro-Performance Analytics"
+author: "David Jenkins"
+date: today
+format: 
+  html:
+    theme: default
+    css: nyt-games.css
+    toc: true
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+## System Calibration Overview
+
+This dashboard strips out localized variance to show true cognitive adaptation over time. We are tracking the shift from System 2 (slow logic) to System 1 (fast visual indexing).
+
+```{r setup}
+if (file.exists(".Renviron")) {
+  readRenviron(".Renviron")
+}
+
+# Load required libraries
+library(tidyverse)
+library(googlesheets4)
+library(lubridate)
+library(DT)
+library(zoo)
+library(RColorBrewer)
+
+# Authenticate and load data. Credentials are stored in the project-local
+# gargle cache configured by .Renviron; run auth_google.R once to create it.
+sheet_url <- "https://docs.google.com/spreadsheets/d/1DqFP8_LM0bnuNjXKArOCDJyFjFYqv4zrOqKz3RG2sMU/edit?gid=0#gid=0"
+auth_cache <- Sys.getenv("GARGLE_OAUTH_CACHE", unset = ".secrets/gargle")
+auth_email <- Sys.getenv("PIP_ANALYTICS_GOOGLE_EMAIL", unset = "")
+
+if (!dir.exists(auth_cache)) {
+  dir.create(auth_cache, recursive = TRUE, showWarnings = FALSE)
+}
+
+gs4_auth(
+  email = if (nzchar(auth_email)) auth_email else TRUE,
+  scopes = "https://www.googleapis.com/auth/spreadsheets.readonly",
+  cache = auth_cache
+)
+
+raw_grid <- read_sheet(sheet_url, sheet = "Times", col_names = FALSE, range = "A:M")
+
+cell_value <- function(column, row) {
+  value <- raw_grid[[column]][[row]]
+
+  if (length(value) == 0) {
+    return(NA)
+  }
+
+  value[[1]]
+}
+
+date_value <- function(row) {
+  value <- cell_value(1, row)
+
+  if (inherits(value, c("Date", "POSIXct", "POSIXt"))) {
+    return(as_date(value))
+  }
+
+  as_date(mdy(value))
+}
+
+time_seconds <- function(column, row) {
+  value <- cell_value(column, row)
+
+  if (length(value) == 0 || is.na(value)) {
+    return(NA_real_)
+  }
+
+  if (inherits(value, c("POSIXct", "POSIXt"))) {
+    return(hour(value) * 3600 + minute(value) * 60 + second(value))
+  }
+
+  if (is.numeric(value)) {
+    return(value * 24 * 60 * 60)
+  }
+
+  hms_value <- hms(value)
+  hour(hms_value) * 3600 + minute(hms_value) * 60 + second(hms_value)
+}
+
+winner_value <- function(column, row) {
+  value <- cell_value(column, row)
+
+  if (length(value) == 0 || is.na(value)) {
+    return(NA_character_)
+  }
+
+  as.character(value)
+}
+
+data_rows <- seq(3, nrow(raw_grid))
+time_columns <- tribble(
+  ~Player, ~Difficulty, ~Column,
+  "Ryan", "Easy", 2,
+  "Ryan", "Medium", 3,
+  "Ryan", "Hard", 4,
+  "David", "Easy", 5,
+  "David", "Medium", 6,
+  "David", "Hard", 7
+)
+
+winner_columns <- tribble(
+  ~Difficulty, ~Column,
+  "Easy", 8,
+  "Medium", 9,
+  "Hard", 10,
+  "Cookies", 11,
+  "Time", 12,
+  "Wins", 13
+)
+
+winner_data <- winner_columns %>%
+  pmap_dfr(function(Difficulty, Column) {
+    tibble(
+      Date = map(data_rows, date_value) %>% list_c(),
+      Difficulty = Difficulty,
+      Winner = map_chr(data_rows, ~ winner_value(Column, .x))
+    )
+  }) %>%
+  filter(!is.na(Date), !is.na(Winner))
+
+overall_winners <- winner_data %>%
+  filter(Difficulty == "Wins") %>%
+  select(Date, Winner)
+
+difficulty_levels <- c("Easy", "Medium", "Hard")
+set1_colors <- brewer.pal(9, "Set1")
+nyt_black <- "#121212"
+nyt_gray <- "#5a5a5a"
+nyt_grid <- "#dfdfdf"
+pips_purple <- "#9251ca"
+pips_soft_pink <- "#d3aace"
+
+theme_nyt_games <- function(base_size = 13) {
+  theme_minimal(base_size = base_size, base_family = "Arial") +
+    theme(
+      plot.background = element_rect(fill = "white", color = NA),
+      panel.background = element_rect(fill = "white", color = NA),
+      panel.grid.major = element_line(color = nyt_grid, linewidth = 0.35),
+      panel.grid.minor = element_line(color = "#ebebeb", linewidth = 0.25),
+      plot.title = element_text(face = "bold", size = 18, color = nyt_black),
+      plot.subtitle = element_text(size = 11, color = nyt_gray, margin = margin(b = 12)),
+      axis.title = element_text(face = "bold", color = nyt_black),
+      axis.text = element_text(color = nyt_gray),
+      strip.text = element_text(face = "bold", color = nyt_black, size = 12),
+      legend.title = element_text(face = "bold", color = nyt_black),
+      legend.text = element_text(color = nyt_black),
+      plot.margin = margin(12, 12, 12, 12)
+    )
+}
+
+# Data Cleaning
+pips_data <- time_columns %>%
+  pmap_dfr(function(Player, Difficulty, Column) {
+    tibble(
+      Date = map(data_rows, date_value) %>% list_c(),
+      Player = Player,
+      Difficulty = Difficulty,
+      Solve_Time_Seconds = map_dbl(data_rows, ~ time_seconds(Column, .x))
+    )
+  }) %>%
+  left_join(
+    winner_data %>% filter(Difficulty %in% c("Easy", "Medium", "Hard")),
+    by = c("Date", "Difficulty")
+  ) %>%
+  mutate(
+    Difficulty = factor(Difficulty, levels = difficulty_levels),
+    Solve_Time_Seconds = as.numeric(Solve_Time_Seconds),
+    Solve_Time_Minutes = Solve_Time_Seconds / 60,
+    Month = floor_date(Date, "month")
+  ) %>%
+  # Filter out games that don't have a recorded time
+  filter(!is.na(Solve_Time_Seconds))
+```
+    
+### 1. Macro-Trend: Average Solve Speed Over Time
+
+This plot applies a LOESS smoothing curve to your solve times. This isolates your underlying skill progression from the noise of anomalous puzzles or "bad instinct" days. Focus on the slope of the curve, not the individual dots.
+    
+```{r trend-analysis}
+#| fig-width: 12
+#| fig-height: 10
+pips_data %>%
+  ggplot(aes(x = Date, y = Solve_Time_Minutes, color = Difficulty)) +
+  geom_point(alpha = 0.3, size = 1.5) +
+  geom_smooth(method = "loess", span = 0.4, se = TRUE) +
+  facet_grid(Difficulty ~ Player, scales = "free_y") +
+  scale_color_brewer(palette = "Set1", drop = FALSE) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
+  theme_nyt_games() +
+  labs(
+    title = "System 1 Handoff: Solve Speed Trend by Player",
+    subtitle = "Rows separate game type; columns compare David and Ryan on the same scale",
+    x = "Date",
+    y = "Solve Time (Minutes)"
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold")
+  )
+```
+
+```{r trend-interpretation, results='asis'}
+trend_summary <- pips_data %>%
+  arrange(Player, Difficulty, Date) %>%
+  group_by(Player, Difficulty) %>%
+  summarise(
+    first_30_median = median(head(Solve_Time_Minutes, 30), na.rm = TRUE),
+    recent_30_median = median(tail(Solve_Time_Minutes, 30), na.rm = TRUE),
+    change_minutes = recent_30_median - first_30_median,
+    slope_minutes_per_month = coef(lm(Solve_Time_Minutes ~ as.numeric(Date)))[2] * 30.44,
+    .groups = "drop"
+  )
+
+cat("**Interpretation:**\n\n")
+walk(seq_len(nrow(trend_summary)), function(i) {
+  row <- trend_summary[i, ]
+  player <- as.character(row$Player)
+  difficulty <- as.character(row$Difficulty)
+  direction <- case_when(
+    row$change_minutes < -0.1 ~ "faster",
+    row$change_minutes > 0.1 ~ "slower",
+    TRUE ~ "roughly flat"
+  )
+  change_text <- ifelse(
+    direction == "roughly flat",
+    "roughly flat compared with",
+    paste(scales::number(abs(row$change_minutes), accuracy = 0.1), "minutes", direction, "than")
+  )
+  cat(
+    "- ", player, " / ", difficulty, ": recent median is ",
+    scales::number(row$recent_30_median, accuracy = 0.1), " minutes, ",
+    change_text, " the first 30 recorded solves. Linear trend is ",
+    scales::number(row$slope_minutes_per_month, accuracy = 0.01),
+    " minutes per month.\n",
+    sep = ""
+  )
+})
+```
+
+### 2. Volatility Analysis: The "Messy Middle"
+This visualization tracks the spread of your solve times month over month. A wider boxplot indicates high variance—a symptom of the calibration phase where you are alternating between trusting fast instincts and relying on slow logic. As you master a difficulty, the boxes will compress.
+
+```{r volatility-analysis}
+#| fig-width: 12
+#| fig-height: 10
+minute_breaks <- c(0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 60)
+
+pips_data %>%
+  filter(Solve_Time_Minutes > 0) %>%
+  ggplot(aes(x = factor(Month), y = Solve_Time_Minutes, fill = Difficulty)) +
+  geom_boxplot(alpha = 0.7, outlier.alpha = 0.5) +
+  facet_grid(Difficulty ~ Player, scales = "free_y") +
+  scale_fill_brewer(palette = "Set1", drop = FALSE) +
+  scale_y_log10(
+    breaks = minute_breaks,
+    labels = scales::label_number(accuracy = 0.1)
+  ) +
+  theme_nyt_games() +
+  labs(
+    title = "Execution Volatility by Month",
+    subtitle = "Rows separate game type; columns compare David and Ryan on the same scale",
+    x = "Month",
+    y = "Solve Time Spread (Minutes, log scale)"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(face = "bold")
+  )
+```
+
+```{r volatility-interpretation, results='asis'}
+volatility_summary <- pips_data %>%
+  group_by(Player, Difficulty, Month) %>%
+  summarise(
+    median_minutes = median(Solve_Time_Minutes, na.rm = TRUE),
+    iqr_minutes = IQR(Solve_Time_Minutes, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(Player, Difficulty, Month) %>%
+  group_by(Player, Difficulty) %>%
+  summarise(
+    typical_iqr = median(iqr_minutes, na.rm = TRUE),
+    latest_month = last(Month),
+    latest_iqr = last(iqr_minutes),
+    latest_median = last(median_minutes),
+    .groups = "drop"
+  )
+
+cat("**Interpretation:**\n\n")
+walk(seq_len(nrow(volatility_summary)), function(i) {
+  row <- volatility_summary[i, ]
+  player <- as.character(row$Player)
+  difficulty <- as.character(row$Difficulty)
+  comparison <- ifelse(row$latest_iqr <= row$typical_iqr, "tighter than", "wider than")
+  cat(
+    "- ", player, " / ", difficulty, ": latest month median is ",
+    scales::number(row$latest_median, accuracy = 0.1), " minutes, with a ",
+    scales::number(row$latest_iqr, accuracy = 0.1), "-minute IQR. That is ",
+    comparison, " the typical monthly IQR of ",
+    scales::number(row$typical_iqr, accuracy = 0.1), " minutes.\n",
+    sep = ""
+  )
+})
+```
+    
+### 3. Head-to-Head Win Rate 
+Tracking localized wins is a trap. This calculates your rolling 10-game win percentage against Ryan. Staying above the 50% line demonstrates a systemic advantage, regardless of who won the most recent match. The first view shows the overall result, and the second splits that same logic by difficulty.
+    
+```{r win-rate}
+# Calculate rolling win rate
+h2h_data <- overall_winners %>%
+  filter(!is.na(Winner)) %>%
+  arrange(Date) %>%
+  mutate(
+    David_Win = ifelse(Winner == "David", 1, 0),
+    Rolling_Win_Rate = rollmean(David_Win, k = 10, fill = NA, align = "right")
+  )
+
+ggplot(h2h_data, aes(x = Date, y = Rolling_Win_Rate)) +
+  geom_line(color = set1_colors[2], linewidth = 1.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = set1_colors[1]) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_nyt_games() +
+  labs(
+    title = "10-Game Rolling Win Rate vs. Ryan",
+    subtitle = "Overall daily result across Easy, Medium, and Hard",
+    x = "Timeline",
+    y = "Win Probability (%)"
+  ) +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+```{r win-rate-by-difficulty}
+difficulty_h2h_data <- winner_data %>%
+  filter(Difficulty %in% difficulty_levels, !is.na(Winner)) %>%
+  mutate(Difficulty = factor(Difficulty, levels = difficulty_levels)) %>%
+  arrange(Difficulty, Date) %>%
+  group_by(Difficulty) %>%
+  mutate(
+    David_Win = ifelse(Winner == "David", 1, 0),
+    Rolling_Win_Rate = rollmean(David_Win, k = 10, fill = NA, align = "right")
+  ) %>%
+  ungroup()
+
+ggplot(difficulty_h2h_data, aes(x = Date, y = Rolling_Win_Rate, color = Difficulty)) +
+  geom_line(linewidth = 1.1, na.rm = TRUE) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey45") +
+  facet_wrap(~Difficulty, ncol = 1) +
+  scale_color_brewer(palette = "Set1", drop = FALSE) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  theme_nyt_games() +
+  labs(
+    title = "10-Game Rolling Win Rate by Difficulty",
+    subtitle = "Each panel asks whether David is above break-even within that puzzle type",
+    x = "Timeline",
+    y = "Win Probability (%)"
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold")
+  )
+```
+
+```{r win-rate-interpretation, results='asis'}
+latest_rolling <- h2h_data %>%
+  filter(!is.na(Rolling_Win_Rate)) %>%
+  slice_tail(n = 1)
+
+overall_record <- h2h_data %>%
+  summarise(
+    david_wins = sum(Winner == "David", na.rm = TRUE),
+    ryan_wins = sum(Winner == "Ryan", na.rm = TRUE),
+    ties = sum(Winner == "Tie", na.rm = TRUE),
+    david_rate = mean(David_Win, na.rm = TRUE)
+  )
+
+cat("**Interpretation:**\n\n")
+cat(
+  "- Overall record: David ",
+  overall_record$david_wins,
+  ", Ryan ",
+  overall_record$ryan_wins,
+  ", ties ",
+  overall_record$ties,
+  ". David's all-game win rate is ",
+  scales::percent(overall_record$david_rate, accuracy = 1),
+  ".\n",
+  sep = ""
+)
+
+if (nrow(latest_rolling) > 0) {
+  cat(
+    "- Latest 10-game rolling rate is ",
+    scales::percent(latest_rolling$Rolling_Win_Rate, accuracy = 1),
+    " as of ",
+    format(latest_rolling$Date, "%Y-%m-%d"),
+    ".\n",
+    sep = ""
+  )
+}
+
+difficulty_record <- difficulty_h2h_data %>%
+  group_by(Difficulty) %>%
+  summarise(
+    david_wins = sum(Winner == "David", na.rm = TRUE),
+    ryan_wins = sum(Winner == "Ryan", na.rm = TRUE),
+    ties = sum(Winner == "Tie", na.rm = TRUE),
+    david_rate = mean(David_Win, na.rm = TRUE),
+    latest_rolling = last(na.omit(Rolling_Win_Rate)),
+    latest_date = last(Date[!is.na(Rolling_Win_Rate)]),
+    .groups = "drop"
+  )
+
+walk(seq_len(nrow(difficulty_record)), function(i) {
+  row <- difficulty_record[i, ]
+  difficulty <- as.character(row$Difficulty)
+  cat(
+    "- ", difficulty, ": David ",
+    row$david_wins,
+    ", Ryan ",
+    row$ryan_wins,
+    ", ties ",
+    row$ties,
+    "; all-game rate ",
+    scales::percent(row$david_rate, accuracy = 1),
+    "; latest rolling rate ",
+    scales::percent(row$latest_rolling, accuracy = 1),
+    " as of ",
+    format(row$latest_date, "%Y-%m-%d"),
+    ".\n",
+    sep = ""
+  )
+})
+```
+
+### 4. Time Gap: David vs. Ryan
+
+This view compares same-day solve times directly. Values below zero mean David solved faster than Ryan; values above zero mean Ryan solved faster.
+
+```{r time-gap}
+time_gap_data <- pips_data %>%
+  select(Date, Player, Difficulty, Solve_Time_Minutes) %>%
+  pivot_wider(names_from = Player, values_from = Solve_Time_Minutes) %>%
+  filter(!is.na(David), !is.na(Ryan)) %>%
+  mutate(
+    Time_Gap_Minutes = David - Ryan,
+    Faster_Player = if_else(Time_Gap_Minutes <= 0, "David faster", "Ryan faster")
+  )
+
+ggplot(time_gap_data, aes(x = Date, y = Time_Gap_Minutes, color = Faster_Player)) +
+  geom_hline(yintercept = 0, color = "grey35") +
+  geom_point(alpha = 0.45, size = 1.4) +
+  geom_smooth(aes(group = 1), method = "loess", span = 0.45, se = FALSE, color = "black") +
+  facet_wrap(~Difficulty, scales = "free_y") +
+  scale_color_manual(values = c("David faster" = set1_colors[2], "Ryan faster" = set1_colors[1])) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
+  theme_nyt_games() +
+  labs(
+    title = "Daily Time Gap by Difficulty",
+    subtitle = "Negative values favor David; positive values favor Ryan",
+    x = "Date",
+    y = "David Minus Ryan (Minutes)",
+    color = "Leader"
+  ) +
+  theme(plot.title = element_text(face = "bold"))
+```
+
+```{r time-gap-interpretation, results='asis'}
+gap_summary <- time_gap_data %>%
+  group_by(Difficulty) %>%
+  summarise(
+    median_gap = median(Time_Gap_Minutes, na.rm = TRUE),
+    david_faster_share = mean(Time_Gap_Minutes < 0, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+cat("**Interpretation:**\n\n")
+walk(seq_len(nrow(gap_summary)), function(i) {
+  row <- gap_summary[i, ]
+  difficulty <- as.character(row$Difficulty)
+  leader <- ifelse(row$median_gap <= 0, "David", "Ryan")
+  cat(
+    "- ", difficulty, ": median gap favors ",
+    leader, " by ",
+    scales::number(abs(row$median_gap), accuracy = 0.1),
+    " minutes. David is faster on ",
+    scales::percent(row$david_faster_share, accuracy = 1),
+    " of matched days.\n",
+    sep = ""
+  )
+})
+```
+
+### 5. Distribution: Player Solve Profiles
+
+This strips away the timeline and compares the full distribution of solve times. It shows whether the advantage is broad and consistent or driven by a few outlier days.
+
+```{r player-distribution}
+pips_data %>%
+  ggplot(aes(x = Player, y = Solve_Time_Minutes, fill = Player)) +
+  geom_violin(alpha = 0.55, trim = FALSE) +
+  geom_boxplot(width = 0.16, outlier.alpha = 0.35) +
+  facet_wrap(~Difficulty, scales = "free_y") +
+  scale_fill_manual(values = c("David" = set1_colors[2], "Ryan" = set1_colors[1])) +
+  scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
+  theme_nyt_games() +
+  labs(
+    title = "Solve Time Distribution by Player",
+    subtitle = "Box centers show typical pace; violin width shows where times cluster",
+    x = NULL,
+    y = "Solve Time (Minutes)"
+  ) +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold")
+  )
+```
+
+```{r player-distribution-interpretation, results='asis'}
+distribution_summary <- pips_data %>%
+  group_by(Difficulty, Player) %>%
+  summarise(median_minutes = median(Solve_Time_Minutes, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = Player, values_from = median_minutes) %>%
+  mutate(David_advantage = Ryan - David)
+
+cat("**Interpretation:**\n\n")
+walk(seq_len(nrow(distribution_summary)), function(i) {
+  row <- distribution_summary[i, ]
+  difficulty <- as.character(row$Difficulty)
+  leader <- ifelse(row$David_advantage >= 0, "David", "Ryan")
+  cat(
+    "- ", difficulty, ": David median ",
+    scales::number(row$David, accuracy = 0.1), " minutes, Ryan median ",
+    scales::number(row$Ryan, accuracy = 0.1), " minutes. Typical pace favors ",
+    leader, " by ",
+    scales::number(abs(row$David_advantage), accuracy = 0.1), " minutes.\n",
+    sep = ""
+  )
+})
+```
+
+### 6. Monthly Median Heatmap
+
+This compresses the timeline into monthly medians for both players, making it easier to spot plateaus, reversals, and difficulty-specific breakthroughs.
+
+```{r monthly-heatmap}
+monthly_medians <- pips_data %>%
+  group_by(Player, Month, Difficulty) %>%
+  summarise(Median_Minutes = median(Solve_Time_Minutes, na.rm = TRUE), .groups = "drop")
+
+ggplot(monthly_medians, aes(x = Month, y = Difficulty, fill = Difficulty, alpha = Median_Minutes)) +
+  geom_tile(color = "white", linewidth = 0.7) +
+  geom_text(aes(label = scales::number(Median_Minutes, accuracy = 0.1)), size = 3) +
+  facet_wrap(~Player, ncol = 1) +
+  scale_fill_brewer(palette = "Set1", drop = FALSE) +
+  scale_alpha_continuous(range = c(0.35, 1), name = "Median minutes") +
+  scale_x_date(date_labels = "%b\n%Y", date_breaks = "1 month") +
+  theme_nyt_games() +
+  labs(
+    title = "Monthly Median Solve Time by Player",
+    subtitle = "Darker cells indicate slower monthly medians",
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold")
+  )
+```
+
+```{r monthly-heatmap-interpretation, results='asis'}
+monthly_summary <- monthly_medians %>%
+  arrange(Player, Difficulty, Month) %>%
+  group_by(Player, Difficulty) %>%
+  summarise(
+    best_month = Month[which.min(Median_Minutes)],
+    best_median = min(Median_Minutes, na.rm = TRUE),
+    latest_month = last(Month),
+    latest_median = last(Median_Minutes),
+    .groups = "drop"
+  )
+
+cat("**Interpretation:**\n\n")
+walk(seq_len(nrow(monthly_summary)), function(i) {
+  row <- monthly_summary[i, ]
+  player <- as.character(row$Player)
+  difficulty <- as.character(row$Difficulty)
+  cat(
+    "- ", player, " / ", difficulty, ": best month was ",
+    format(row$best_month, "%b %Y"), " at ",
+    scales::number(row$best_median, accuracy = 0.1),
+    " minutes. Latest month is ",
+    scales::number(row$latest_median, accuracy = 0.1),
+    " minutes.\n",
+    sep = ""
+  )
+})
+```
+
+### 7. Raw Data Explorer
+
+Use this table to audit specific sessions or isolate exact dates where your times spiked. This allows you to cross-reference data anomalies with your mental state (e.g., "Was I sick?" or "Did I try a new greedy algorithm today?").
+
+```{r data-table}
+pips_data %>%
+  arrange(desc(Date)) %>%
+  select(Date, Player, Difficulty, Solve_Time_Minutes, Winner) %>%
+  datatable(
+    options = list(pageLength = 10, scrollX = TRUE),
+    rownames = FALSE,
+    class = 'cell-border stripe'
+  ) %>%
+  formatRound("Solve_Time_Minutes", digits = 2)
+```

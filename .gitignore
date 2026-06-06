@@ -1,0 +1,8 @@
+.Renviron
+.secrets/
+*_cache/
+/.quarto/
+.Rproj.user/
+nytimes/
+pip_analytics.html
+pip_analytics.Rproj
