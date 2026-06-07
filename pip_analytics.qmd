@@ -183,17 +183,17 @@ pips_data <- time_columns %>%
   # Filter out games that don't have a recorded time
   filter(!is.na(Solve_Time_Seconds))
 
-plot_solve_trend <- function(selected_difficulty) {
+plot_solve_trend <- function(selected_difficulty, player_columns = 1, base_size = 14) {
   pips_data %>%
     filter(Difficulty == selected_difficulty) %>%
     ggplot(aes(x = Date, y = Solve_Time_Minutes, color = Difficulty)) +
     geom_point(alpha = 0.35, size = 1.6) +
     geom_smooth(method = "loess", span = 0.4, se = TRUE) +
-    facet_wrap(~Player, ncol = 1) +
+    facet_wrap(~Player, ncol = player_columns) +
     scale_color_manual(values = difficulty_colors, drop = FALSE) +
     scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
     scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
-    theme_nyt_games(base_size = 14) +
+    theme_nyt_games(base_size = base_size) +
     labs(
       title = paste("System 1 Handoff:", selected_difficulty, "Solve Speed"),
       subtitle = "David and Ryan use the same y-axis within this game type",
@@ -206,19 +206,19 @@ plot_solve_trend <- function(selected_difficulty) {
     )
 }
 
-plot_monthly_volatility <- function(selected_difficulty) {
+plot_monthly_volatility <- function(selected_difficulty, player_columns = 1, base_size = 14) {
   pips_data %>%
     filter(Difficulty == selected_difficulty, Solve_Time_Minutes > 0) %>%
     ggplot(aes(x = Month, y = Solve_Time_Minutes, fill = Difficulty, group = Month)) +
     geom_boxplot(width = 22, alpha = 0.75, outlier.alpha = 0.55) +
-    facet_wrap(~Player, ncol = 1) +
+    facet_wrap(~Player, ncol = player_columns) +
     scale_fill_manual(values = difficulty_colors, drop = FALSE) +
     scale_x_date(date_labels = "%b\n%Y", date_breaks = "1 month") +
     scale_y_log10(
       breaks = minute_breaks,
       labels = scales::label_number(accuracy = 0.1)
     ) +
-    theme_nyt_games(base_size = 14) +
+    theme_nyt_games(base_size = base_size) +
     labs(
       title = paste("Execution Volatility:", selected_difficulty),
       subtitle = "Log minutes reveal compression and blow-ups on the same player scale",
@@ -232,7 +232,7 @@ plot_monthly_volatility <- function(selected_difficulty) {
     )
 }
 
-plot_player_distribution <- function(selected_difficulty) {
+plot_player_distribution <- function(selected_difficulty, base_size = 14) {
   pips_data %>%
     filter(Difficulty == selected_difficulty, Solve_Time_Minutes > 0) %>%
     ggplot(aes(x = Player, y = Solve_Time_Minutes, fill = Player)) +
@@ -243,7 +243,7 @@ plot_player_distribution <- function(selected_difficulty) {
       breaks = minute_breaks,
       labels = scales::label_number(accuracy = 0.1)
     ) +
-    theme_nyt_games(base_size = 14) +
+    theme_nyt_games(base_size = base_size) +
     labs(
       title = paste("Solve Time Distribution:", selected_difficulty),
       subtitle = "Log minutes keep fast solves readable while still showing long-tail spikes",
@@ -261,11 +261,45 @@ plot_player_distribution <- function(selected_difficulty) {
 
 This plot applies a LOESS smoothing curve to your solve times. This isolates your underlying skill progression from the noise of anomalous puzzles or "bad instinct" days. Focus on the slope of the curve, not the individual dots.
     
+::: {.responsive-plot-desktop}
+
 ::: {.panel-tabset}
 
 #### Easy
 
-```{r trend-easy}
+```{r trend-easy-desktop}
+#| fig-width: 10
+#| fig-height: 5
+plot_solve_trend("Easy", player_columns = 2, base_size = 13)
+```
+
+#### Medium
+
+```{r trend-medium-desktop}
+#| fig-width: 10
+#| fig-height: 5
+plot_solve_trend("Medium", player_columns = 2, base_size = 13)
+```
+
+#### Hard
+
+```{r trend-hard-desktop}
+#| fig-width: 10
+#| fig-height: 5
+plot_solve_trend("Hard", player_columns = 2, base_size = 13)
+```
+
+:::
+
+:::
+
+::: {.responsive-plot-mobile}
+
+::: {.panel-tabset}
+
+#### Easy
+
+```{r trend-easy-mobile}
 #| fig-width: 8.5
 #| fig-height: 7
 plot_solve_trend("Easy")
@@ -273,7 +307,7 @@ plot_solve_trend("Easy")
 
 #### Medium
 
-```{r trend-medium}
+```{r trend-medium-mobile}
 #| fig-width: 8.5
 #| fig-height: 7
 plot_solve_trend("Medium")
@@ -281,11 +315,13 @@ plot_solve_trend("Medium")
 
 #### Hard
 
-```{r trend-hard}
+```{r trend-hard-mobile}
 #| fig-width: 8.5
 #| fig-height: 7
 plot_solve_trend("Hard")
 ```
+
+:::
 
 :::
 
@@ -330,11 +366,45 @@ walk(seq_len(nrow(trend_summary)), function(i) {
 ### 2. Volatility Analysis: The "Messy Middle"
 This visualization tracks the spread of your solve times month over month. A wider boxplot indicates high variance—a symptom of the calibration phase where you are alternating between trusting fast instincts and relying on slow logic. As you master a difficulty, the boxes will compress.
 
+::: {.responsive-plot-desktop}
+
 ::: {.panel-tabset}
 
 #### Easy
 
-```{r volatility-easy}
+```{r volatility-easy-desktop}
+#| fig-width: 10
+#| fig-height: 5
+plot_monthly_volatility("Easy", player_columns = 2, base_size = 13)
+```
+
+#### Medium
+
+```{r volatility-medium-desktop}
+#| fig-width: 10
+#| fig-height: 5
+plot_monthly_volatility("Medium", player_columns = 2, base_size = 13)
+```
+
+#### Hard
+
+```{r volatility-hard-desktop}
+#| fig-width: 10
+#| fig-height: 5
+plot_monthly_volatility("Hard", player_columns = 2, base_size = 13)
+```
+
+:::
+
+:::
+
+::: {.responsive-plot-mobile}
+
+::: {.panel-tabset}
+
+#### Easy
+
+```{r volatility-easy-mobile}
 #| fig-width: 8.5
 #| fig-height: 7
 plot_monthly_volatility("Easy")
@@ -342,7 +412,7 @@ plot_monthly_volatility("Easy")
 
 #### Medium
 
-```{r volatility-medium}
+```{r volatility-medium-mobile}
 #| fig-width: 8.5
 #| fig-height: 7
 plot_monthly_volatility("Medium")
@@ -350,11 +420,13 @@ plot_monthly_volatility("Medium")
 
 #### Hard
 
-```{r volatility-hard}
+```{r volatility-hard-mobile}
 #| fig-width: 8.5
 #| fig-height: 7
 plot_monthly_volatility("Hard")
 ```
+
+:::
 
 :::
 
@@ -585,11 +657,45 @@ walk(seq_len(nrow(gap_summary)), function(i) {
 
 This strips away the timeline and compares the full distribution of solve times. It shows whether the advantage is broad and consistent or driven by a few outlier days.
 
+::: {.responsive-plot-desktop}
+
 ::: {.panel-tabset}
 
 #### Easy
 
-```{r player-distribution-easy}
+```{r player-distribution-easy-desktop}
+#| fig-width: 10
+#| fig-height: 4.6
+plot_player_distribution("Easy", base_size = 13)
+```
+
+#### Medium
+
+```{r player-distribution-medium-desktop}
+#| fig-width: 10
+#| fig-height: 4.6
+plot_player_distribution("Medium", base_size = 13)
+```
+
+#### Hard
+
+```{r player-distribution-hard-desktop}
+#| fig-width: 10
+#| fig-height: 4.6
+plot_player_distribution("Hard", base_size = 13)
+```
+
+:::
+
+:::
+
+::: {.responsive-plot-mobile}
+
+::: {.panel-tabset}
+
+#### Easy
+
+```{r player-distribution-easy-mobile}
 #| fig-width: 8.5
 #| fig-height: 4.8
 plot_player_distribution("Easy")
@@ -597,7 +703,7 @@ plot_player_distribution("Easy")
 
 #### Medium
 
-```{r player-distribution-medium}
+```{r player-distribution-medium-mobile}
 #| fig-width: 8.5
 #| fig-height: 4.8
 plot_player_distribution("Medium")
@@ -605,11 +711,13 @@ plot_player_distribution("Medium")
 
 #### Hard
 
-```{r player-distribution-hard}
+```{r player-distribution-hard-mobile}
 #| fig-width: 8.5
 #| fig-height: 4.8
 plot_player_distribution("Hard")
 ```
+
+:::
 
 :::
 

@@ -157,6 +157,14 @@ main.content li::marker {
   margin-block: 1rem 1.7rem;
 }
 
+.responsive-plot-mobile {
+  display: none;
+}
+
+.responsive-plot-desktop {
+  display: block;
+}
+
 .nav-tabs {
   gap: 0.35rem;
   border-bottom: 2px solid var(--nyt-black);
@@ -273,6 +281,14 @@ hr {
 @media (max-width: 768px) {
   body {
     border-top-width: 6px;
+  }
+
+  .responsive-plot-desktop {
+    display: none;
+  }
+
+  .responsive-plot-mobile {
+    display: block;
   }
 
   #title-block-header {
