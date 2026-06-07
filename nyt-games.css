@@ -339,3 +339,13 @@ hr {
   }
 
 }
+
+@media (orientation: landscape) and (max-height: 600px) {
+  .responsive-plot-desktop {
+    display: block;
+  }
+
+  .responsive-plot-mobile {
+    display: none;
+  }
+}

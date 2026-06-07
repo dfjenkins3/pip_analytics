@@ -141,6 +141,16 @@ nyt_gray <- "#5a5a5a"
 nyt_grid <- "#dfdfdf"
 pips_purple <- "#9251ca"
 pips_soft_pink <- "#d3aace"
+mobile_title_width <- 25
+mobile_subtitle_width <- 42
+
+chart_title <- function(title, title_width = Inf) {
+  if (is.finite(title_width)) {
+    return(str_wrap(title, width = title_width))
+  }
+
+  title
+}
 
 theme_nyt_games <- function(base_size = 13) {
   theme_minimal(base_size = base_size, base_family = "Arial") +
@@ -149,7 +159,7 @@ theme_nyt_games <- function(base_size = 13) {
       panel.background = element_rect(fill = "white", color = NA),
       panel.grid.major = element_line(color = nyt_grid, linewidth = 0.35),
       panel.grid.minor = element_line(color = "#ebebeb", linewidth = 0.25),
-      plot.title = element_text(face = "bold", size = 18, color = nyt_black),
+      plot.title = element_text(face = "bold", size = 18, color = nyt_black, lineheight = 0.95),
       plot.subtitle = element_text(size = 11, color = nyt_gray, margin = margin(b = 12)),
       axis.title = element_text(face = "bold", color = nyt_black),
       axis.text = element_text(color = nyt_gray),
@@ -183,7 +193,17 @@ pips_data <- time_columns %>%
   # Filter out games that don't have a recorded time
   filter(!is.na(Solve_Time_Seconds))
 
-plot_solve_trend <- function(selected_difficulty, player_columns = 1, base_size = 14) {
+# Responsive plot convention for future sections:
+# desktop = wide, side-by-side where useful; mobile portrait = 4.2 x ~7.3,
+# wrapped titles, and legends below when a right legend would steal plot width.
+# CSS switches phone landscape back to the desktop plot variant.
+plot_solve_trend <- function(
+  selected_difficulty,
+  player_columns = 1,
+  base_size = 14,
+  title_width = Inf,
+  subtitle_width = Inf
+) {
   pips_data %>%
     filter(Difficulty == selected_difficulty) %>%
     ggplot(aes(x = Date, y = Solve_Time_Minutes, color = Difficulty)) +
@@ -195,8 +215,8 @@ plot_solve_trend <- function(selected_difficulty, player_columns = 1, base_size 
     scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
     theme_nyt_games(base_size = base_size) +
     labs(
-      title = paste("System 1 Handoff:", selected_difficulty, "Solve Speed"),
-      subtitle = "David and Ryan use the same y-axis within this game type",
+      title = chart_title(paste("System 1 Handoff:", selected_difficulty, "Solve Speed"), title_width),
+      subtitle = chart_title("David and Ryan use the same y-axis within this game type", subtitle_width),
       x = "Date",
       y = "Solve Time (Minutes)"
     ) +
@@ -206,7 +226,13 @@ plot_solve_trend <- function(selected_difficulty, player_columns = 1, base_size 
     )
 }
 
-plot_monthly_volatility <- function(selected_difficulty, player_columns = 1, base_size = 14) {
+plot_monthly_volatility <- function(
+  selected_difficulty,
+  player_columns = 1,
+  base_size = 14,
+  title_width = Inf,
+  subtitle_width = Inf
+) {
   pips_data %>%
     filter(Difficulty == selected_difficulty, Solve_Time_Minutes > 0) %>%
     ggplot(aes(x = Month, y = Solve_Time_Minutes, fill = Difficulty, group = Month)) +
@@ -220,8 +246,8 @@ plot_monthly_volatility <- function(selected_difficulty, player_columns = 1, bas
     ) +
     theme_nyt_games(base_size = base_size) +
     labs(
-      title = paste("Execution Volatility:", selected_difficulty),
-      subtitle = "Log minutes reveal compression and blow-ups on the same player scale",
+      title = chart_title(paste("Execution Volatility:", selected_difficulty), title_width),
+      subtitle = chart_title("Log minutes reveal compression and blow-ups on the same player scale", subtitle_width),
       x = "Month",
       y = "Solve Time Spread (Minutes, log scale)"
     ) +
@@ -232,7 +258,12 @@ plot_monthly_volatility <- function(selected_difficulty, player_columns = 1, bas
     )
 }
 
-plot_player_distribution <- function(selected_difficulty, base_size = 14) {
+plot_player_distribution <- function(
+  selected_difficulty,
+  base_size = 14,
+  title_width = Inf,
+  subtitle_width = Inf
+) {
   pips_data %>%
     filter(Difficulty == selected_difficulty, Solve_Time_Minutes > 0) %>%
     ggplot(aes(x = Player, y = Solve_Time_Minutes, fill = Player)) +
@@ -245,8 +276,8 @@ plot_player_distribution <- function(selected_difficulty, base_size = 14) {
     ) +
     theme_nyt_games(base_size = base_size) +
     labs(
-      title = paste("Solve Time Distribution:", selected_difficulty),
-      subtitle = "Log minutes keep fast solves readable while still showing long-tail spikes",
+      title = chart_title(paste("Solve Time Distribution:", selected_difficulty), title_width),
+      subtitle = chart_title("Log minutes keep fast solves readable while still showing long-tail spikes", subtitle_width),
       x = NULL,
       y = "Solve Time (Minutes, log scale)"
     ) +
@@ -289,7 +320,12 @@ overall_time_gap_data <- time_gap_data %>%
   summarise(Time_Gap_Minutes = sum(Time_Gap_Minutes, na.rm = TRUE), .groups = "drop") %>%
   mutate(Faster_Player = if_else(Time_Gap_Minutes <= 0, "David faster", "Ryan faster"))
 
-plot_h2h_win_rate <- function(selected_game = "Overall", base_size = 13) {
+plot_h2h_win_rate <- function(
+  selected_game = "Overall",
+  base_size = 13,
+  title_width = Inf,
+  subtitle_width = Inf
+) {
   is_overall <- selected_game == "Overall"
   plot_data <- if (is_overall) {
     h2h_data
@@ -305,15 +341,21 @@ plot_h2h_win_rate <- function(selected_game = "Overall", base_size = 13) {
     scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
     theme_nyt_games(base_size = base_size) +
     labs(
-      title = paste("10-Game Rolling Win Rate:", selected_game),
-      subtitle = "Above 50% means David is ahead over the rolling window",
+      title = chart_title(paste("10-Game Rolling Win Rate:", selected_game), title_width),
+      subtitle = chart_title("Above 50% means David is ahead over the rolling window", subtitle_width),
       x = "Timeline",
       y = "Win Probability (%)"
     ) +
     theme(plot.title = element_text(face = "bold"))
 }
 
-plot_time_gap <- function(selected_game = "Overall", base_size = 13) {
+plot_time_gap <- function(
+  selected_game = "Overall",
+  base_size = 13,
+  title_width = Inf,
+  subtitle_width = Inf,
+  legend_position = "right"
+) {
   is_overall <- selected_game == "Overall"
   plot_data <- if (is_overall) {
     overall_time_gap_data
@@ -330,13 +372,18 @@ plot_time_gap <- function(selected_game = "Overall", base_size = 13) {
     scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
     theme_nyt_games(base_size = base_size) +
     labs(
-      title = paste("Daily Time Gap:", selected_game),
-      subtitle = "Negative values favor David; positive values favor Ryan",
+      title = chart_title(paste("Daily Time Gap:", selected_game), title_width),
+      subtitle = chart_title("Negative values favor David; positive values favor Ryan", subtitle_width),
       x = "Date",
       y = "David Minus Ryan (Minutes)",
       color = "Leader"
     ) +
-    theme(plot.title = element_text(face = "bold"))
+    theme(
+      plot.title = element_text(face = "bold"),
+      legend.position = legend_position,
+      legend.direction = if_else(legend_position == "bottom", "horizontal", "vertical"),
+      legend.box = "horizontal"
+    )
 }
 ```
     
@@ -385,7 +432,7 @@ plot_solve_trend("Hard", player_columns = 2, base_size = 13)
 ```{r trend-easy-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_solve_trend("Easy")
+plot_solve_trend("Easy", title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 #### Medium
@@ -393,7 +440,7 @@ plot_solve_trend("Easy")
 ```{r trend-medium-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_solve_trend("Medium")
+plot_solve_trend("Medium", title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 #### Hard
@@ -401,7 +448,7 @@ plot_solve_trend("Medium")
 ```{r trend-hard-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_solve_trend("Hard")
+plot_solve_trend("Hard", title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 :::
@@ -490,7 +537,7 @@ plot_monthly_volatility("Hard", player_columns = 2, base_size = 13)
 ```{r volatility-easy-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_monthly_volatility("Easy")
+plot_monthly_volatility("Easy", title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 #### Medium
@@ -498,7 +545,7 @@ plot_monthly_volatility("Easy")
 ```{r volatility-medium-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_monthly_volatility("Medium")
+plot_monthly_volatility("Medium", title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 #### Hard
@@ -506,7 +553,7 @@ plot_monthly_volatility("Medium")
 ```{r volatility-hard-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_monthly_volatility("Hard")
+plot_monthly_volatility("Hard", title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 :::
@@ -600,7 +647,7 @@ plot_h2h_win_rate("Hard", base_size = 13)
 ```{r win-rate-overall-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.2
-plot_h2h_win_rate("Overall", base_size = 15)
+plot_h2h_win_rate("Overall", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 #### Easy
@@ -608,7 +655,7 @@ plot_h2h_win_rate("Overall", base_size = 15)
 ```{r win-rate-easy-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.2
-plot_h2h_win_rate("Easy", base_size = 15)
+plot_h2h_win_rate("Easy", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 #### Medium
@@ -616,7 +663,7 @@ plot_h2h_win_rate("Easy", base_size = 15)
 ```{r win-rate-medium-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.2
-plot_h2h_win_rate("Medium", base_size = 15)
+plot_h2h_win_rate("Medium", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 #### Hard
@@ -624,7 +671,7 @@ plot_h2h_win_rate("Medium", base_size = 15)
 ```{r win-rate-hard-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.2
-plot_h2h_win_rate("Hard", base_size = 15)
+plot_h2h_win_rate("Hard", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 :::
@@ -756,7 +803,7 @@ plot_time_gap("Hard", base_size = 13)
 ```{r time-gap-overall-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.2
-plot_time_gap("Overall", base_size = 15)
+plot_time_gap("Overall", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width, legend_position = "bottom")
 ```
 
 #### Easy
@@ -764,7 +811,7 @@ plot_time_gap("Overall", base_size = 15)
 ```{r time-gap-easy-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.2
-plot_time_gap("Easy", base_size = 15)
+plot_time_gap("Easy", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width, legend_position = "bottom")
 ```
 
 #### Medium
@@ -772,7 +819,7 @@ plot_time_gap("Easy", base_size = 15)
 ```{r time-gap-medium-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.2
-plot_time_gap("Medium", base_size = 15)
+plot_time_gap("Medium", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width, legend_position = "bottom")
 ```
 
 #### Hard
@@ -780,7 +827,7 @@ plot_time_gap("Medium", base_size = 15)
 ```{r time-gap-hard-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.2
-plot_time_gap("Hard", base_size = 15)
+plot_time_gap("Hard", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width, legend_position = "bottom")
 ```
 
 :::
@@ -858,7 +905,7 @@ plot_player_distribution("Hard", base_size = 13)
 ```{r player-distribution-easy-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_player_distribution("Easy", base_size = 15)
+plot_player_distribution("Easy", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 #### Medium
@@ -866,7 +913,7 @@ plot_player_distribution("Easy", base_size = 15)
 ```{r player-distribution-medium-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_player_distribution("Medium", base_size = 15)
+plot_player_distribution("Medium", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 #### Hard
@@ -874,7 +921,7 @@ plot_player_distribution("Medium", base_size = 15)
 ```{r player-distribution-hard-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_player_distribution("Hard", base_size = 15)
+plot_player_distribution("Hard", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
 ```
 
 :::
