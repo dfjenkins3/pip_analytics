@@ -145,9 +145,45 @@ main.content li::marker {
 }
 
 .cell-output-display img {
+  display: block;
+  max-width: 100%;
+  height: auto;
   border: 1px solid var(--nyt-border);
   background: #fff;
   box-shadow: 0 2px 0 rgba(18, 18, 18, 0.08);
+}
+
+.panel-tabset {
+  margin-block: 1rem 1.7rem;
+}
+
+.nav-tabs {
+  gap: 0.35rem;
+  border-bottom: 2px solid var(--nyt-black);
+}
+
+.nav-tabs .nav-link {
+  margin-bottom: 0.45rem;
+  border: 1px solid var(--nyt-border);
+  border-radius: 999px;
+  color: var(--nyt-black);
+  font-size: 0.88rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  padding: 0.38rem 0.78rem;
+  text-decoration: none;
+}
+
+.nav-tabs .nav-link:hover {
+  border-color: var(--nyt-black);
+  color: var(--pips-purple);
+}
+
+.nav-tabs .nav-link.active,
+.nav-tabs .nav-item.show .nav-link {
+  border-color: var(--nyt-black);
+  background: var(--pips-accent);
+  color: var(--nyt-black);
 }
 
 #TOC,
@@ -246,4 +282,17 @@ hr {
   h3 {
     margin-top: 1.8rem;
   }
+
+  .nav-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 0.2rem;
+  }
+
+  .nav-tabs .nav-link {
+    white-space: nowrap;
+    font-size: 0.82rem;
+    padding: 0.34rem 0.68rem;
+  }
+
 }

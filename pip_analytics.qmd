@@ -134,6 +134,8 @@ overall_winners <- winner_data %>%
 
 difficulty_levels <- c("Easy", "Medium", "Hard")
 set1_colors <- brewer.pal(9, "Set1")
+difficulty_colors <- setNames(set1_colors[seq_along(difficulty_levels)], difficulty_levels)
+minute_breaks <- c(0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 60)
 nyt_black <- "#121212"
 nyt_gray <- "#5a5a5a"
 nyt_grid <- "#dfdfdf"
@@ -180,34 +182,112 @@ pips_data <- time_columns %>%
   ) %>%
   # Filter out games that don't have a recorded time
   filter(!is.na(Solve_Time_Seconds))
+
+plot_solve_trend <- function(selected_difficulty) {
+  pips_data %>%
+    filter(Difficulty == selected_difficulty) %>%
+    ggplot(aes(x = Date, y = Solve_Time_Minutes, color = Difficulty)) +
+    geom_point(alpha = 0.35, size = 1.6) +
+    geom_smooth(method = "loess", span = 0.4, se = TRUE) +
+    facet_wrap(~Player, ncol = 1) +
+    scale_color_manual(values = difficulty_colors, drop = FALSE) +
+    scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
+    scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
+    theme_nyt_games(base_size = 14) +
+    labs(
+      title = paste("System 1 Handoff:", selected_difficulty, "Solve Speed"),
+      subtitle = "David and Ryan use the same y-axis within this game type",
+      x = "Date",
+      y = "Solve Time (Minutes)"
+    ) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(face = "bold")
+    )
+}
+
+plot_monthly_volatility <- function(selected_difficulty) {
+  pips_data %>%
+    filter(Difficulty == selected_difficulty, Solve_Time_Minutes > 0) %>%
+    ggplot(aes(x = Month, y = Solve_Time_Minutes, fill = Difficulty, group = Month)) +
+    geom_boxplot(width = 22, alpha = 0.75, outlier.alpha = 0.55) +
+    facet_wrap(~Player, ncol = 1) +
+    scale_fill_manual(values = difficulty_colors, drop = FALSE) +
+    scale_x_date(date_labels = "%b\n%Y", date_breaks = "1 month") +
+    scale_y_log10(
+      breaks = minute_breaks,
+      labels = scales::label_number(accuracy = 0.1)
+    ) +
+    theme_nyt_games(base_size = 14) +
+    labs(
+      title = paste("Execution Volatility:", selected_difficulty),
+      subtitle = "Log minutes reveal compression and blow-ups on the same player scale",
+      x = "Month",
+      y = "Solve Time Spread (Minutes, log scale)"
+    ) +
+    theme(
+      legend.position = "none",
+      axis.text.x = element_text(lineheight = 0.9),
+      plot.title = element_text(face = "bold")
+    )
+}
+
+plot_player_distribution <- function(selected_difficulty) {
+  pips_data %>%
+    filter(Difficulty == selected_difficulty, Solve_Time_Minutes > 0) %>%
+    ggplot(aes(x = Player, y = Solve_Time_Minutes, fill = Player)) +
+    geom_violin(alpha = 0.55, trim = FALSE) +
+    geom_boxplot(width = 0.16, outlier.alpha = 0.35) +
+    scale_fill_manual(values = c("David" = set1_colors[2], "Ryan" = set1_colors[1])) +
+    scale_y_log10(
+      breaks = minute_breaks,
+      labels = scales::label_number(accuracy = 0.1)
+    ) +
+    theme_nyt_games(base_size = 14) +
+    labs(
+      title = paste("Solve Time Distribution:", selected_difficulty),
+      subtitle = "Log minutes keep fast solves readable while still showing long-tail spikes",
+      x = NULL,
+      y = "Solve Time (Minutes, log scale)"
+    ) +
+    theme(
+      legend.position = "none",
+      plot.title = element_text(face = "bold")
+    )
+}
 ```
     
 ### 1. Macro-Trend: Average Solve Speed Over Time
 
 This plot applies a LOESS smoothing curve to your solve times. This isolates your underlying skill progression from the noise of anomalous puzzles or "bad instinct" days. Focus on the slope of the curve, not the individual dots.
     
-```{r trend-analysis}
-#| fig-width: 12
-#| fig-height: 10
-pips_data %>%
-  ggplot(aes(x = Date, y = Solve_Time_Minutes, color = Difficulty)) +
-  geom_point(alpha = 0.3, size = 1.5) +
-  geom_smooth(method = "loess", span = 0.4, se = TRUE) +
-  facet_grid(Difficulty ~ Player, scales = "free_y") +
-  scale_color_brewer(palette = "Set1", drop = FALSE) +
-  scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
-  theme_nyt_games() +
-  labs(
-    title = "System 1 Handoff: Solve Speed Trend by Player",
-    subtitle = "Rows separate game type; columns compare David and Ryan on the same scale",
-    x = "Date",
-    y = "Solve Time (Minutes)"
-  ) +
-  theme(
-    legend.position = "none",
-    plot.title = element_text(face = "bold")
-  )
+::: {.panel-tabset}
+
+#### Easy
+
+```{r trend-easy}
+#| fig-width: 8.5
+#| fig-height: 7
+plot_solve_trend("Easy")
 ```
+
+#### Medium
+
+```{r trend-medium}
+#| fig-width: 8.5
+#| fig-height: 7
+plot_solve_trend("Medium")
+```
+
+#### Hard
+
+```{r trend-hard}
+#| fig-width: 8.5
+#| fig-height: 7
+plot_solve_trend("Hard")
+```
+
+:::
 
 ```{r trend-interpretation, results='asis'}
 trend_summary <- pips_data %>%
@@ -250,33 +330,33 @@ walk(seq_len(nrow(trend_summary)), function(i) {
 ### 2. Volatility Analysis: The "Messy Middle"
 This visualization tracks the spread of your solve times month over month. A wider boxplot indicates high variance—a symptom of the calibration phase where you are alternating between trusting fast instincts and relying on slow logic. As you master a difficulty, the boxes will compress.
 
-```{r volatility-analysis}
-#| fig-width: 12
-#| fig-height: 10
-minute_breaks <- c(0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 60)
+::: {.panel-tabset}
 
-pips_data %>%
-  filter(Solve_Time_Minutes > 0) %>%
-  ggplot(aes(x = factor(Month), y = Solve_Time_Minutes, fill = Difficulty)) +
-  geom_boxplot(alpha = 0.7, outlier.alpha = 0.5) +
-  facet_grid(Difficulty ~ Player, scales = "free_y") +
-  scale_fill_brewer(palette = "Set1", drop = FALSE) +
-  scale_y_log10(
-    breaks = minute_breaks,
-    labels = scales::label_number(accuracy = 0.1)
-  ) +
-  theme_nyt_games() +
-  labs(
-    title = "Execution Volatility by Month",
-    subtitle = "Rows separate game type; columns compare David and Ryan on the same scale",
-    x = "Month",
-    y = "Solve Time Spread (Minutes, log scale)"
-  ) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    plot.title = element_text(face = "bold")
-  )
+#### Easy
+
+```{r volatility-easy}
+#| fig-width: 8.5
+#| fig-height: 7
+plot_monthly_volatility("Easy")
 ```
+
+#### Medium
+
+```{r volatility-medium}
+#| fig-width: 8.5
+#| fig-height: 7
+plot_monthly_volatility("Medium")
+```
+
+#### Hard
+
+```{r volatility-hard}
+#| fig-width: 8.5
+#| fig-height: 7
+plot_monthly_volatility("Hard")
+```
+
+:::
 
 ```{r volatility-interpretation, results='asis'}
 volatility_summary <- pips_data %>%
@@ -505,26 +585,33 @@ walk(seq_len(nrow(gap_summary)), function(i) {
 
 This strips away the timeline and compares the full distribution of solve times. It shows whether the advantage is broad and consistent or driven by a few outlier days.
 
-```{r player-distribution}
-pips_data %>%
-  ggplot(aes(x = Player, y = Solve_Time_Minutes, fill = Player)) +
-  geom_violin(alpha = 0.55, trim = FALSE) +
-  geom_boxplot(width = 0.16, outlier.alpha = 0.35) +
-  facet_wrap(~Difficulty, scales = "free_y") +
-  scale_fill_manual(values = c("David" = set1_colors[2], "Ryan" = set1_colors[1])) +
-  scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
-  theme_nyt_games() +
-  labs(
-    title = "Solve Time Distribution by Player",
-    subtitle = "Box centers show typical pace; violin width shows where times cluster",
-    x = NULL,
-    y = "Solve Time (Minutes)"
-  ) +
-  theme(
-    legend.position = "none",
-    plot.title = element_text(face = "bold")
-  )
+::: {.panel-tabset}
+
+#### Easy
+
+```{r player-distribution-easy}
+#| fig-width: 8.5
+#| fig-height: 4.8
+plot_player_distribution("Easy")
 ```
+
+#### Medium
+
+```{r player-distribution-medium}
+#| fig-width: 8.5
+#| fig-height: 4.8
+plot_player_distribution("Medium")
+```
+
+#### Hard
+
+```{r player-distribution-hard}
+#| fig-width: 8.5
+#| fig-height: 4.8
+plot_player_distribution("Hard")
+```
+
+:::
 
 ```{r player-distribution-interpretation, results='asis'}
 distribution_summary <- pips_data %>%
