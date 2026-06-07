@@ -255,6 +255,89 @@ plot_player_distribution <- function(selected_difficulty, base_size = 14) {
       plot.title = element_text(face = "bold")
     )
 }
+
+h2h_data <- overall_winners %>%
+  filter(!is.na(Winner)) %>%
+  arrange(Date) %>%
+  mutate(
+    David_Win = ifelse(Winner == "David", 1, 0),
+    Rolling_Win_Rate = rollmean(David_Win, k = 10, fill = NA, align = "right")
+  )
+
+difficulty_h2h_data <- winner_data %>%
+  filter(Difficulty %in% difficulty_levels, !is.na(Winner)) %>%
+  mutate(Difficulty = factor(Difficulty, levels = difficulty_levels)) %>%
+  arrange(Difficulty, Date) %>%
+  group_by(Difficulty) %>%
+  mutate(
+    David_Win = ifelse(Winner == "David", 1, 0),
+    Rolling_Win_Rate = rollmean(David_Win, k = 10, fill = NA, align = "right")
+  ) %>%
+  ungroup()
+
+time_gap_data <- pips_data %>%
+  select(Date, Player, Difficulty, Solve_Time_Minutes) %>%
+  pivot_wider(names_from = Player, values_from = Solve_Time_Minutes) %>%
+  filter(!is.na(David), !is.na(Ryan)) %>%
+  mutate(
+    Time_Gap_Minutes = David - Ryan,
+    Faster_Player = if_else(Time_Gap_Minutes <= 0, "David faster", "Ryan faster")
+  )
+
+overall_time_gap_data <- time_gap_data %>%
+  group_by(Date) %>%
+  summarise(Time_Gap_Minutes = sum(Time_Gap_Minutes, na.rm = TRUE), .groups = "drop") %>%
+  mutate(Faster_Player = if_else(Time_Gap_Minutes <= 0, "David faster", "Ryan faster"))
+
+plot_h2h_win_rate <- function(selected_game = "Overall", base_size = 13) {
+  is_overall <- selected_game == "Overall"
+  plot_data <- if (is_overall) {
+    h2h_data
+  } else {
+    difficulty_h2h_data %>% filter(Difficulty == selected_game)
+  }
+  line_color <- if (is_overall) set1_colors[2] else difficulty_colors[[selected_game]]
+
+  ggplot(plot_data, aes(x = Date, y = Rolling_Win_Rate)) +
+    geom_line(color = line_color, linewidth = 1.2, na.rm = TRUE) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", color = set1_colors[1]) +
+    scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
+    scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+    theme_nyt_games(base_size = base_size) +
+    labs(
+      title = paste("10-Game Rolling Win Rate:", selected_game),
+      subtitle = "Above 50% means David is ahead over the rolling window",
+      x = "Timeline",
+      y = "Win Probability (%)"
+    ) +
+    theme(plot.title = element_text(face = "bold"))
+}
+
+plot_time_gap <- function(selected_game = "Overall", base_size = 13) {
+  is_overall <- selected_game == "Overall"
+  plot_data <- if (is_overall) {
+    overall_time_gap_data
+  } else {
+    time_gap_data %>% filter(Difficulty == selected_game)
+  }
+
+  ggplot(plot_data, aes(x = Date, y = Time_Gap_Minutes, color = Faster_Player)) +
+    geom_hline(yintercept = 0, color = "grey35") +
+    geom_point(alpha = 0.5, size = 1.5) +
+    geom_smooth(aes(group = 1), method = "loess", span = 0.45, se = FALSE, color = "black") +
+    scale_color_manual(values = c("David faster" = set1_colors[2], "Ryan faster" = set1_colors[1])) +
+    scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
+    scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
+    theme_nyt_games(base_size = base_size) +
+    labs(
+      title = paste("Daily Time Gap:", selected_game),
+      subtitle = "Negative values favor David; positive values favor Ryan",
+      x = "Date",
+      y = "David Minus Ryan (Minutes)",
+      color = "Leader"
+    ) +
+    theme(plot.title = element_text(face = "bold"))
+}
 ```
     
 ### 1. Macro-Trend: Average Solve Speed Over Time
@@ -300,24 +383,24 @@ plot_solve_trend("Hard", player_columns = 2, base_size = 13)
 #### Easy
 
 ```{r trend-easy-mobile}
-#| fig-width: 8.5
-#| fig-height: 7
+#| fig-width: 4.2
+#| fig-height: 7.4
 plot_solve_trend("Easy")
 ```
 
 #### Medium
 
 ```{r trend-medium-mobile}
-#| fig-width: 8.5
-#| fig-height: 7
+#| fig-width: 4.2
+#| fig-height: 7.4
 plot_solve_trend("Medium")
 ```
 
 #### Hard
 
 ```{r trend-hard-mobile}
-#| fig-width: 8.5
-#| fig-height: 7
+#| fig-width: 4.2
+#| fig-height: 7.4
 plot_solve_trend("Hard")
 ```
 
@@ -405,24 +488,24 @@ plot_monthly_volatility("Hard", player_columns = 2, base_size = 13)
 #### Easy
 
 ```{r volatility-easy-mobile}
-#| fig-width: 8.5
-#| fig-height: 7
+#| fig-width: 4.2
+#| fig-height: 7.4
 plot_monthly_volatility("Easy")
 ```
 
 #### Medium
 
 ```{r volatility-medium-mobile}
-#| fig-width: 8.5
-#| fig-height: 7
+#| fig-width: 4.2
+#| fig-height: 7.4
 plot_monthly_volatility("Medium")
 ```
 
 #### Hard
 
 ```{r volatility-hard-mobile}
-#| fig-width: 8.5
-#| fig-height: 7
+#| fig-width: 4.2
+#| fig-height: 7.4
 plot_monthly_volatility("Hard")
 ```
 
@@ -466,62 +549,87 @@ walk(seq_len(nrow(volatility_summary)), function(i) {
 ```
     
 ### 3. Head-to-Head Win Rate 
-Tracking localized wins is a trap. This calculates your rolling 10-game win percentage against Ryan. Staying above the 50% line demonstrates a systemic advantage, regardless of who won the most recent match. The first view shows the overall result, and the second splits that same logic by difficulty.
+Tracking localized wins is a trap. This calculates your rolling 10-game win percentage against Ryan. Staying above the 50% line demonstrates a systemic advantage, regardless of who won the most recent match.
     
-```{r win-rate}
-# Calculate rolling win rate
-h2h_data <- overall_winners %>%
-  filter(!is.na(Winner)) %>%
-  arrange(Date) %>%
-  mutate(
-    David_Win = ifelse(Winner == "David", 1, 0),
-    Rolling_Win_Rate = rollmean(David_Win, k = 10, fill = NA, align = "right")
-  )
+::: {.responsive-plot-desktop}
 
-ggplot(h2h_data, aes(x = Date, y = Rolling_Win_Rate)) +
-  geom_line(color = set1_colors[2], linewidth = 1.2) +
-  geom_hline(yintercept = 0.5, linetype = "dashed", color = set1_colors[1]) +
-  scale_y_continuous(labels = scales::percent_format()) +
-  theme_nyt_games() +
-  labs(
-    title = "10-Game Rolling Win Rate vs. Ryan",
-    subtitle = "Overall daily result across Easy, Medium, and Hard",
-    x = "Timeline",
-    y = "Win Probability (%)"
-  ) +
-  theme(plot.title = element_text(face = "bold"))
+::: {.panel-tabset}
+
+#### Overall
+
+```{r win-rate-overall-desktop}
+#| fig-width: 10
+#| fig-height: 4.8
+plot_h2h_win_rate("Overall", base_size = 13)
 ```
 
-```{r win-rate-by-difficulty}
-difficulty_h2h_data <- winner_data %>%
-  filter(Difficulty %in% difficulty_levels, !is.na(Winner)) %>%
-  mutate(Difficulty = factor(Difficulty, levels = difficulty_levels)) %>%
-  arrange(Difficulty, Date) %>%
-  group_by(Difficulty) %>%
-  mutate(
-    David_Win = ifelse(Winner == "David", 1, 0),
-    Rolling_Win_Rate = rollmean(David_Win, k = 10, fill = NA, align = "right")
-  ) %>%
-  ungroup()
+#### Easy
 
-ggplot(difficulty_h2h_data, aes(x = Date, y = Rolling_Win_Rate, color = Difficulty)) +
-  geom_line(linewidth = 1.1, na.rm = TRUE) +
-  geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey45") +
-  facet_wrap(~Difficulty, ncol = 1) +
-  scale_color_brewer(palette = "Set1", drop = FALSE) +
-  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
-  theme_nyt_games() +
-  labs(
-    title = "10-Game Rolling Win Rate by Difficulty",
-    subtitle = "Each panel asks whether David is above break-even within that puzzle type",
-    x = "Timeline",
-    y = "Win Probability (%)"
-  ) +
-  theme(
-    legend.position = "none",
-    plot.title = element_text(face = "bold")
-  )
+```{r win-rate-easy-desktop}
+#| fig-width: 10
+#| fig-height: 4.8
+plot_h2h_win_rate("Easy", base_size = 13)
 ```
+
+#### Medium
+
+```{r win-rate-medium-desktop}
+#| fig-width: 10
+#| fig-height: 4.8
+plot_h2h_win_rate("Medium", base_size = 13)
+```
+
+#### Hard
+
+```{r win-rate-hard-desktop}
+#| fig-width: 10
+#| fig-height: 4.8
+plot_h2h_win_rate("Hard", base_size = 13)
+```
+
+:::
+
+:::
+
+::: {.responsive-plot-mobile}
+
+::: {.panel-tabset}
+
+#### Overall
+
+```{r win-rate-overall-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.2
+plot_h2h_win_rate("Overall", base_size = 15)
+```
+
+#### Easy
+
+```{r win-rate-easy-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.2
+plot_h2h_win_rate("Easy", base_size = 15)
+```
+
+#### Medium
+
+```{r win-rate-medium-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.2
+plot_h2h_win_rate("Medium", base_size = 15)
+```
+
+#### Hard
+
+```{r win-rate-hard-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.2
+plot_h2h_win_rate("Hard", base_size = 15)
+```
+
+:::
+
+:::
 
 ```{r win-rate-interpretation, results='asis'}
 latest_rolling <- h2h_data %>%
@@ -599,33 +707,85 @@ walk(seq_len(nrow(difficulty_record)), function(i) {
 
 This view compares same-day solve times directly. Values below zero mean David solved faster than Ryan; values above zero mean Ryan solved faster.
 
-```{r time-gap}
-time_gap_data <- pips_data %>%
-  select(Date, Player, Difficulty, Solve_Time_Minutes) %>%
-  pivot_wider(names_from = Player, values_from = Solve_Time_Minutes) %>%
-  filter(!is.na(David), !is.na(Ryan)) %>%
-  mutate(
-    Time_Gap_Minutes = David - Ryan,
-    Faster_Player = if_else(Time_Gap_Minutes <= 0, "David faster", "Ryan faster")
-  )
+::: {.responsive-plot-desktop}
 
-ggplot(time_gap_data, aes(x = Date, y = Time_Gap_Minutes, color = Faster_Player)) +
-  geom_hline(yintercept = 0, color = "grey35") +
-  geom_point(alpha = 0.45, size = 1.4) +
-  geom_smooth(aes(group = 1), method = "loess", span = 0.45, se = FALSE, color = "black") +
-  facet_wrap(~Difficulty, scales = "free_y") +
-  scale_color_manual(values = c("David faster" = set1_colors[2], "Ryan faster" = set1_colors[1])) +
-  scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
-  theme_nyt_games() +
-  labs(
-    title = "Daily Time Gap by Difficulty",
-    subtitle = "Negative values favor David; positive values favor Ryan",
-    x = "Date",
-    y = "David Minus Ryan (Minutes)",
-    color = "Leader"
-  ) +
-  theme(plot.title = element_text(face = "bold"))
+::: {.panel-tabset}
+
+#### Overall
+
+```{r time-gap-overall-desktop}
+#| fig-width: 10
+#| fig-height: 4.8
+plot_time_gap("Overall", base_size = 13)
 ```
+
+#### Easy
+
+```{r time-gap-easy-desktop}
+#| fig-width: 10
+#| fig-height: 4.8
+plot_time_gap("Easy", base_size = 13)
+```
+
+#### Medium
+
+```{r time-gap-medium-desktop}
+#| fig-width: 10
+#| fig-height: 4.8
+plot_time_gap("Medium", base_size = 13)
+```
+
+#### Hard
+
+```{r time-gap-hard-desktop}
+#| fig-width: 10
+#| fig-height: 4.8
+plot_time_gap("Hard", base_size = 13)
+```
+
+:::
+
+:::
+
+::: {.responsive-plot-mobile}
+
+::: {.panel-tabset}
+
+#### Overall
+
+```{r time-gap-overall-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.2
+plot_time_gap("Overall", base_size = 15)
+```
+
+#### Easy
+
+```{r time-gap-easy-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.2
+plot_time_gap("Easy", base_size = 15)
+```
+
+#### Medium
+
+```{r time-gap-medium-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.2
+plot_time_gap("Medium", base_size = 15)
+```
+
+#### Hard
+
+```{r time-gap-hard-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.2
+plot_time_gap("Hard", base_size = 15)
+```
+
+:::
+
+:::
 
 ```{r time-gap-interpretation, results='asis'}
 gap_summary <- time_gap_data %>%
@@ -696,25 +856,25 @@ plot_player_distribution("Hard", base_size = 13)
 #### Easy
 
 ```{r player-distribution-easy-mobile}
-#| fig-width: 8.5
-#| fig-height: 4.8
-plot_player_distribution("Easy")
+#| fig-width: 4.2
+#| fig-height: 7.4
+plot_player_distribution("Easy", base_size = 15)
 ```
 
 #### Medium
 
 ```{r player-distribution-medium-mobile}
-#| fig-width: 8.5
-#| fig-height: 4.8
-plot_player_distribution("Medium")
+#| fig-width: 4.2
+#| fig-height: 7.4
+plot_player_distribution("Medium", base_size = 15)
 ```
 
 #### Hard
 
 ```{r player-distribution-hard-mobile}
-#| fig-width: 8.5
-#| fig-height: 4.8
-plot_player_distribution("Hard")
+#| fig-width: 4.2
+#| fig-height: 7.4
+plot_player_distribution("Hard", base_size = 15)
 ```
 
 :::

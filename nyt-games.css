@@ -146,6 +146,7 @@ main.content li::marker {
 
 .cell-output-display img {
   display: block;
+  box-sizing: border-box;
   max-width: 100%;
   height: auto;
   border: 1px solid var(--nyt-border);
@@ -289,6 +290,32 @@ hr {
 
   .responsive-plot-mobile {
     display: block;
+  }
+
+  .responsive-plot-mobile .panel-tabset {
+    box-sizing: border-box;
+    width: calc(100vw - 18px);
+    margin-left: calc(50% - 50vw + 9px);
+    margin-right: calc(50% - 50vw + 9px);
+  }
+
+  .responsive-plot-mobile .cell-output-display img {
+    width: 100%;
+    max-height: 82vh;
+    object-fit: contain;
+  }
+
+  .responsive-plot-mobile .tab-content,
+  .responsive-plot-mobile .tab-pane,
+  .responsive-plot-mobile .cell,
+  .responsive-plot-mobile .cell-output-display,
+  .responsive-plot-mobile figure,
+  .responsive-plot-mobile p {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    padding-left: 0;
+    padding-right: 0;
   }
 
   #title-block-header {
