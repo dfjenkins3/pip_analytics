@@ -1,5 +1,5 @@
 ---
-title: "Pips Macro-Performance Analytics"
+title: "Pips performance report"
 author: "David Jenkins"
 date: today
 format: 
@@ -13,9 +13,9 @@ execute:
   message: false
 ---
 
-## System Calibration Overview
+## Overview
 
-This dashboard strips out localized variance to show true cognitive adaptation over time. We are tracking the shift from System 2 (slow logic) to System 1 (fast visual indexing).
+Compare David's and Ryan's solve times, consistency, and recorded wins for Easy, Medium, and Hard puzzles. The charts describe recorded results; they don't explain why performance changed.
 
 ```{r setup}
 if (file.exists(".Renviron")) {
@@ -237,6 +237,58 @@ monthly_trend_data <- pips_data %>%
   ) %>%
   ungroup()
 
+report_month <- floor_date(today(tzone = "America/New_York"), "month")
+
+format_minutes <- function(value, accuracy = 0.01) {
+  ifelse(is.na(value), "Not available", paste(scales::number(value, accuracy = accuracy), "min"))
+}
+
+pace_change <- function(change) {
+  case_when(
+    is.na(change) ~ "No comparison available",
+    near(change, 0) ~ "Unchanged",
+    change < 0 ~ paste(format_minutes(abs(change), 0.001), "faster"),
+    TRUE ~ paste(format_minutes(abs(change), 0.001), "slower")
+  )
+}
+
+summary_cell <- function(headline, ...) {
+  htmltools::tagList(
+    htmltools::tags$p(htmltools::tags$strong(headline)),
+    lapply(list(...), htmltools::tags$p)
+  )
+}
+
+summary_table <- function(headers, rows, caption) {
+  htmltools::tags$div(
+    class = "report-summary",
+    htmltools::tags$table(
+      class = "summary-table",
+      htmltools::tags$caption(caption),
+      htmltools::tags$thead(htmltools::tags$tr(lapply(headers, function(header) {
+        htmltools::tags$th(scope = "col", header)
+      }))),
+      htmltools::tags$tbody(lapply(rows, function(row) {
+        htmltools::tags$tr(
+          htmltools::tags$th(scope = "row", row[[1]]),
+          lapply(row[-1], htmltools::tags$td)
+        )
+      }))
+    )
+  ) %>% as.character() %>% cat("\n\n")
+}
+
+player_summary_table <- function(data, cell, caption) {
+  rows <- lapply(difficulty_levels, function(difficulty) {
+    c(list(difficulty), lapply(c("David", "Ryan"), function(player) {
+      row <- filter(data, Difficulty == difficulty, Player == player)
+      if (nrow(row) == 0) return("No recorded solves")
+      cell(row)
+    }))
+  })
+  summary_table(c("Game", "David", "Ryan"), rows, caption)
+}
+
 # Responsive plot convention for future sections:
 # desktop = wide, side-by-side where useful; mobile portrait = 4.2 x ~7.3,
 # wrapped titles, and legends below when a right legend would steal plot width.
@@ -261,10 +313,10 @@ plot_solve_trend <- function(
     theme_nyt_games(base_size = base_size) +
     theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
-      title = chart_title(paste("Solve Speed:", selected_difficulty), title_width),
-      subtitle = chart_title("David and Ryan use the same y-axis within this game type", subtitle_width),
+      title = chart_title(paste("Solve times:", selected_difficulty), title_width),
+      subtitle = chart_title("David and Ryan share the same vertical scale", subtitle_width),
       x = "Date",
-      y = "Solve Time (Minutes)"
+      y = "Solve time (minutes)"
     ) +
     theme(
       legend.position = "none",
@@ -293,10 +345,10 @@ plot_monthly_volatility <- function(
     theme_nyt_games(base_size = base_size) +
     theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
-      title = chart_title(paste("Execution Volatility:", selected_difficulty), title_width),
-      subtitle = chart_title("Log minutes reveal compression and blow-ups on the same player scale", subtitle_width),
+      title = chart_title(paste("Monthly consistency:", selected_difficulty), title_width),
+      subtitle = chart_title("Shorter boxes mean less relative variation in solve times", subtitle_width),
       x = "Month",
-      y = "Solve Time Spread (Minutes, log scale)"
+      y = "Solve time (minutes, log scale)"
     ) +
     theme(
       legend.position = "none",
@@ -323,10 +375,10 @@ plot_player_distribution <- function(
     ) +
     theme_nyt_games(base_size = base_size) +
     labs(
-      title = chart_title(paste("Solve Time Distribution:", selected_difficulty), title_width),
-      subtitle = chart_title("Log minutes keep fast solves readable while still showing long-tail spikes", subtitle_width),
+      title = chart_title(paste("Solve-time distribution:", selected_difficulty), title_width),
+      subtitle = chart_title("Wider sections show more solves at that time", subtitle_width),
       x = NULL,
-      y = "Solve Time (Minutes, log scale)"
+      y = "Solve time (minutes, log scale)"
     ) +
     theme(
       legend.position = "none",
@@ -397,10 +449,10 @@ plot_h2h_win_rate <- function(
     theme_nyt_games(base_size = base_size) +
     theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
-      title = chart_title(paste("10-Game Rolling Win Rate:", selected_game), title_width),
-      subtitle = chart_title("Above 50% means David is ahead over the rolling window", subtitle_width),
-      x = "Timeline",
-      y = "Win Probability (%)"
+      title = chart_title(paste("10-result win rate:", selected_game), title_width),
+      subtitle = chart_title("David's wins in the last 10 recorded results; ties count as non-wins", subtitle_width),
+      x = "Date",
+      y = "David's win rate (%)"
     ) +
     theme(plot.title = element_text(face = "bold"))
 }
@@ -437,11 +489,11 @@ plot_time_gap <- function(
     theme_nyt_games(base_size = base_size) +
     theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
-      title = chart_title(paste("Daily Time Gap:", selected_game), title_width),
+      title = chart_title(paste("Daily time gap:", selected_game), title_width),
       subtitle = chart_title("Negative values favor David; positive values favor Ryan", subtitle_width),
       x = "Date",
-      y = "David Minus Ryan (Minutes)",
-      color = if (legend_position == "bottom") NULL else "Leader"
+      y = "David minus Ryan (minutes)",
+      color = if (legend_position == "bottom") NULL else "Faster player"
     ) +
     theme(
       plot.title = element_text(face = "bold"),
@@ -478,21 +530,25 @@ plot_monthly_trend <- function(
     theme_nyt_games(base_size = base_size) +
     theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
-      title = chart_title(paste("Monthly Pace Change:", selected_difficulty), title_width),
+      title = chart_title(paste("Monthly pace change:", selected_difficulty), title_width),
       subtitle = chart_title("Below zero is faster than the previous month; above zero is slower", subtitle_width),
       caption = chart_title("Dots mean no change. Lighter bars mark a partial month.", subtitle_width),
       x = "Month",
-      y = "Median Change (Minutes)"
+      y = "Change in median (minutes)"
     ) +
     theme(legend.position = "none")
 }
 ```
 
-Hard solve times are capped at `r hard_time_cap_minutes` minutes throughout the solve-time analysis, including the time-gap comparisons and data explorer. Win rates use the winners recorded in the sheet.
-    
-### 1. Macro-Trend: Average Solve Speed Over Time
+The report includes recorded solves from `r format(min(pips_data$Date), '%B %d, %Y')` through `r format(max(pips_data$Date), '%B %d, %Y')`. Missing times are excluded. Solve times are shown in minutes. The median represents a typical solve time and is less affected by very slow solves than the average. Table values are rounded for display; changes are calculated from unrounded medians.
 
-This plot applies a LOESS smoothing curve to your solve times. This isolates your underlying skill progression from the noise of anomalous puzzles or "bad instinct" days. Focus on the slope of the curve, not the individual dots.
+Hard times above `r hard_time_cap_minutes` minutes are treated as `r hard_time_cap_minutes` minutes in every solve-time analysis and in the data table. This cap reduces the measured spread and can make different Hard times appear equal. A capped time doesn't necessarily mean the puzzle was completed. Win rates use the winners recorded in the sheet, not the capped times.
+
+The current month's summaries use only the results recorded so far. Comparisons with a full month can change as more results are added.
+    
+### 1. Solve times over time
+
+Each dot is a recorded solve. The line smooths nearby results to show the general direction: lower means faster. The shaded band shows uncertainty in the fitted line. David and Ryan share the same vertical scale within each game. Puzzle difficulty and other conditions can affect the trend.
     
 ::: {.responsive-plot-desktop}
 
@@ -566,38 +622,23 @@ trend_summary <- pips_data %>%
     first_30_median = median(head(Solve_Time_Minutes, 30), na.rm = TRUE),
     recent_30_median = median(tail(Solve_Time_Minutes, 30), na.rm = TRUE),
     change_minutes = recent_30_median - first_30_median,
-    slope_minutes_per_month = coef(lm(Solve_Time_Minutes ~ as.numeric(Date)))[2] * 30.44,
+    comparison_solves = min(n(), 30),
     .groups = "drop"
   )
 
-cat("**Interpretation:**\n\n")
-walk(seq_len(nrow(trend_summary)), function(i) {
-  row <- trend_summary[i, ]
-  player <- as.character(row$Player)
-  difficulty <- as.character(row$Difficulty)
-  direction <- case_when(
-    row$change_minutes < -0.1 ~ "faster",
-    row$change_minutes > 0.1 ~ "slower",
-    TRUE ~ "roughly flat"
+cat("The table compares each player's first and latest 30 recorded solves. These medians are separate from the fitted line.\n\n")
+player_summary_table(trend_summary, function(row) {
+  summary_cell(
+    pace_change(row$change_minutes),
+    paste("First", row$comparison_solves, "median:", format_minutes(row$first_30_median)),
+    paste("Latest", row$comparison_solves, "median:", format_minutes(row$recent_30_median))
   )
-  change_text <- ifelse(
-    direction == "roughly flat",
-    "roughly flat compared with",
-    paste(scales::number(abs(row$change_minutes), accuracy = 0.1), "minutes", direction, "than")
-  )
-  cat(
-    "- ", player, " / ", difficulty, ": recent median is ",
-    scales::number(row$recent_30_median, accuracy = 0.1), " minutes, ",
-    change_text, " the first 30 recorded solves. Linear trend is ",
-    scales::number(row$slope_minutes_per_month, accuracy = 0.01),
-    " minutes per month.\n",
-    sep = ""
-  )
-})
+}, "Table 1. Change in median solve time")
 ```
 
-### 2. Volatility Analysis: The "Messy Middle"
-This visualization tracks the spread of your solve times month over month. A wider boxplot indicates high variance—a symptom of the calibration phase where you are alternating between trusting fast instincts and relying on slow logic. As you master a difficulty, the boxes will compress.
+### 2. Monthly consistency
+
+Each box spans the middle half of a month's solve times. The line inside marks the median. A shorter box means those times were closer together; it doesn't necessarily mean faster solves. Points beyond the whiskers show unusually high or low times. The logarithmic vertical scale gives equal space to equal ratios, such as 1 to 2 minutes and 2 to 4 minutes.
 
 ::: {.responsive-plot-desktop}
 
@@ -669,37 +710,40 @@ volatility_summary <- pips_data %>%
   summarise(
     median_minutes = median(Solve_Time_Minutes, na.rm = TRUE),
     iqr_minutes = IQR(Solve_Time_Minutes, na.rm = TRUE),
+    solves = n(),
     .groups = "drop"
   ) %>%
   arrange(Player, Difficulty, Month) %>%
   group_by(Player, Difficulty) %>%
   summarise(
-    typical_iqr = median(iqr_minutes, na.rm = TRUE),
+    typical_iqr = if (any(Month < report_month)) median(iqr_minutes[Month < report_month]) else NA_real_,
     latest_month = last(Month),
     latest_iqr = last(iqr_minutes),
     latest_median = last(median_minutes),
+    latest_solves = last(solves),
     .groups = "drop"
   )
 
-cat("**Interpretation:**\n\n")
-walk(seq_len(nrow(volatility_summary)), function(i) {
-  row <- volatility_summary[i, ]
-  player <- as.character(row$Player)
-  difficulty <- as.character(row$Difficulty)
-  comparison <- ifelse(row$latest_iqr <= row$typical_iqr, "tighter than", "wider than")
-  cat(
-    "- ", player, " / ", difficulty, ": latest month median is ",
-    scales::number(row$latest_median, accuracy = 0.1), " minutes, with a ",
-    scales::number(row$latest_iqr, accuracy = 0.1), "-minute IQR. That is ",
-    comparison, " the typical monthly IQR of ",
-    scales::number(row$typical_iqr, accuracy = 0.1), " minutes.\n",
-    sep = ""
+cat("The table compares the latest month's spread with the median spread of earlier calendar months that have ended. Spread is the interquartile range: the range containing the middle half of recorded times, measured in minutes before applying the logarithmic scale.\n\n")
+player_summary_table(volatility_summary, function(row) {
+  comparison <- case_when(
+    is.na(row$typical_iqr) ~ "No earlier-month comparison",
+    near(row$latest_iqr, row$typical_iqr) ~ "Same spread as earlier months",
+    row$latest_iqr < row$typical_iqr ~ "Less spread than earlier months",
+    TRUE ~ "More spread than earlier months"
   )
-})
+  summary_cell(
+    comparison,
+    paste(format(row$latest_month, "%B %Y"), "spread:", format_minutes(row$latest_iqr)),
+    paste("Earlier-month benchmark:", format_minutes(row$typical_iqr)),
+    paste(row$latest_solves, "solves;", if (row$latest_month >= report_month) "partial month" else "calendar month ended")
+  )
+}, "Table 2. Monthly variation in solve times")
 ```
     
-### 3. Head-to-Head Win Rate 
-Tracking localized wins is a trap. This calculates your rolling 10-game win percentage against Ryan. Staying above the 50% line demonstrates a systemic advantage, regardless of who won the most recent match.
+### 3. Head-to-head win rate
+
+The line shows David's share of wins in the last 10 recorded results. Above 50% means David won more than half of those results. A tie counts as a non-win for both players, so a value below 50% doesn't always mean Ryan won a majority. The Overall tab uses the sheet's daily overall winner; the other tabs use the winner for that game. This is a recent win rate, not a forecast.
     
 ::: {.responsive-plot-desktop}
 
@@ -782,80 +826,50 @@ plot_h2h_win_rate("Hard", base_size = 15, title_width = mobile_title_width, subt
 :::
 
 ```{r win-rate-interpretation, results='asis'}
-latest_rolling <- h2h_data %>%
-  filter(!is.na(Rolling_Win_Rate)) %>%
-  slice_tail(n = 1)
-
-overall_record <- h2h_data %>%
+win_record <- bind_rows(
+  mutate(h2h_data, Game = "Overall"),
+  mutate(difficulty_h2h_data, Game = as.character(Difficulty))
+) %>%
+  mutate(Game = factor(Game, levels = c("Overall", difficulty_levels))) %>%
+  arrange(Game, Date) %>%
+  group_by(Game) %>%
   summarise(
     david_wins = sum(Winner == "David", na.rm = TRUE),
     ryan_wins = sum(Winner == "Ryan", na.rm = TRUE),
     ties = sum(Winner == "Tie", na.rm = TRUE),
-    david_rate = mean(David_Win, na.rm = TRUE)
-  )
-
-cat("**Interpretation:**\n\n")
-cat(
-  "- Overall record: David ",
-  overall_record$david_wins,
-  ", Ryan ",
-  overall_record$ryan_wins,
-  ", ties ",
-  overall_record$ties,
-  ". David's all-game win rate is ",
-  scales::percent(overall_record$david_rate, accuracy = 1),
-  ".\n",
-  sep = ""
-)
-
-if (nrow(latest_rolling) > 0) {
-  cat(
-    "- Latest 10-game rolling rate is ",
-    scales::percent(latest_rolling$Rolling_Win_Rate, accuracy = 1),
-    " as of ",
-    format(latest_rolling$Date, "%Y-%m-%d"),
-    ".\n",
-    sep = ""
-  )
-}
-
-difficulty_record <- difficulty_h2h_data %>%
-  group_by(Difficulty) %>%
-  summarise(
-    david_wins = sum(Winner == "David", na.rm = TRUE),
-    ryan_wins = sum(Winner == "Ryan", na.rm = TRUE),
-    ties = sum(Winner == "Tie", na.rm = TRUE),
+    results = n(),
     david_rate = mean(David_Win, na.rm = TRUE),
-    latest_rolling = last(na.omit(Rolling_Win_Rate)),
-    latest_date = last(Date[!is.na(Rolling_Win_Rate)]),
+    latest_rolling = last(Rolling_Win_Rate),
+    latest_date = last(Date),
+    recent_david_wins = sum(tail(Winner, 10) == "David"),
+    recent_ryan_wins = sum(tail(Winner, 10) == "Ryan"),
+    recent_ties = sum(tail(Winner, 10) == "Tie"),
     .groups = "drop"
   )
 
-walk(seq_len(nrow(difficulty_record)), function(i) {
-  row <- difficulty_record[i, ]
-  difficulty <- as.character(row$Difficulty)
-  cat(
-    "- ", difficulty, ": David ",
-    row$david_wins,
-    ", Ryan ",
-    row$ryan_wins,
-    ", ties ",
-    row$ties,
-    "; all-game rate ",
-    scales::percent(row$david_rate, accuracy = 1),
-    "; latest rolling rate ",
-    scales::percent(row$latest_rolling, accuracy = 1),
-    " as of ",
-    format(row$latest_date, "%Y-%m-%d"),
-    ".\n",
-    sep = ""
+cat("The full record and the last 10 results are shown separately in the table. Ties stay in the denominator.\n\n")
+win_rows <- lapply(seq_len(nrow(win_record)), function(i) {
+  row <- win_record[i, ]
+  list(
+    as.character(row$Game),
+    summary_cell(
+      paste("David:", row$david_wins, "wins; Ryan:", row$ryan_wins, "wins"),
+      paste("Ties:", row$ties, "of", row$results, "results"),
+      paste("David's win rate:", scales::percent(row$david_rate, accuracy = 0.1))
+    ),
+    if (is.na(row$latest_rolling)) "Fewer than 10 recorded results" else summary_cell(
+      paste("David's win rate:", scales::percent(row$latest_rolling, accuracy = 1)),
+      paste("David:", row$recent_david_wins, "wins; Ryan:", row$recent_ryan_wins, "wins; ties:", row$recent_ties),
+      paste("Through", format(row$latest_date, "%B %d, %Y"))
+    )
   )
 })
+summary_table(c("Game", "All recorded results", "Last 10 results"), win_rows, "Table 3. Recorded wins and recent win rates")
 ```
 
-### 4. Time Gap: David vs. Ryan
+### 4. Daily time gap
 
-This view compares same-day solve times directly. Values below zero mean David solved faster than Ryan; values above zero mean Ryan solved faster.
+The gap is David's time minus Ryan's time for the same date and game. Negative values mean David was faster; positive values mean Ryan was faster. Zero means equal analyzed times, including ties created by the Hard cap. Only games with both players' times are included. The Overall tab adds the gaps for the matched games on each date; a day with missing times can include fewer than three games.
 
 ::: {.responsive-plot-desktop}
 
@@ -938,34 +952,44 @@ plot_time_gap("Hard", base_size = 15, title_width = mobile_title_width, subtitle
 :::
 
 ```{r time-gap-interpretation, results='asis'}
-gap_summary <- time_gap_data %>%
-  group_by(Difficulty) %>%
+gap_summary <- bind_rows(
+  transmute(overall_time_gap_data, Game = "Overall", Time_Gap_Minutes),
+  transmute(time_gap_data, Game = as.character(Difficulty), Time_Gap_Minutes)
+) %>%
+  mutate(Game = factor(Game, levels = c("Overall", difficulty_levels))) %>%
+  group_by(Game) %>%
   summarise(
     median_gap = median(Time_Gap_Minutes, na.rm = TRUE),
     david_faster_share = mean(Time_Gap_Minutes < 0, na.rm = TRUE),
+    ryan_faster_share = mean(Time_Gap_Minutes > 0, na.rm = TRUE),
+    same_time_share = mean(Time_Gap_Minutes == 0, na.rm = TRUE),
+    matched_days = n(),
     .groups = "drop"
   )
 
-cat("**Interpretation:**\n\n")
-walk(seq_len(nrow(gap_summary)), function(i) {
+cat("The table summarizes matched days across the full record. Equal times are counted separately from either player's faster days.\n\n")
+gap_rows <- lapply(seq_len(nrow(gap_summary)), function(i) {
   row <- gap_summary[i, ]
-  difficulty <- as.character(row$Difficulty)
-  leader <- ifelse(row$median_gap <= 0, "David", "Ryan")
-  cat(
-    "- ", difficulty, ": median gap favors ",
-    leader, " by ",
-    scales::number(abs(row$median_gap), accuracy = 0.1),
-    " minutes. David is faster on ",
-    scales::percent(row$david_faster_share, accuracy = 1),
-    " of matched days.\n",
-    sep = ""
+  list(
+    as.character(row$Game),
+    if (near(row$median_gap, 0)) "No median daily gap" else paste(
+      if (row$median_gap < 0) "David faster by" else "Ryan faster by",
+      format_minutes(abs(row$median_gap), 0.001)
+    ),
+    summary_cell(
+      paste("David faster:", scales::percent(row$david_faster_share, accuracy = 0.1)),
+      paste("Ryan faster:", scales::percent(row$ryan_faster_share, accuracy = 0.1)),
+      paste("Equal times:", scales::percent(row$same_time_share, accuracy = 0.1)),
+      paste(row$matched_days, "matched days")
+    )
   )
 })
+summary_table(c("Game", "Median daily gap", "Share of matched days"), gap_rows, "Table 4. Same-day solve-time comparisons")
 ```
 
-### 5. Distribution: Player Solve Profiles
+### 5. Solve-time distribution
 
-This strips away the timeline and compares the full distribution of solve times. It shows whether the advantage is broad and consistent or driven by a few outlier days.
+The shapes summarize all recorded times, without showing when they occurred. Wider sections mean more solves near that time. The box inside each shape shows the middle half of times and the median. The vertical axis is logarithmic, as in the monthly consistency chart. Each player's summary includes their own recorded solves, so the medians aren't restricted to matched days.
 
 ::: {.responsive-plot-desktop}
 
@@ -1034,29 +1058,27 @@ plot_player_distribution("Hard", base_size = 15, title_width = mobile_title_widt
 ```{r player-distribution-interpretation, results='asis'}
 distribution_summary <- pips_data %>%
   group_by(Difficulty, Player) %>%
-  summarise(median_minutes = median(Solve_Time_Minutes, na.rm = TRUE), .groups = "drop") %>%
-  pivot_wider(names_from = Player, values_from = median_minutes) %>%
-  mutate(David_advantage = Ryan - David)
-
-cat("**Interpretation:**\n\n")
-walk(seq_len(nrow(distribution_summary)), function(i) {
-  row <- distribution_summary[i, ]
-  difficulty <- as.character(row$Difficulty)
-  leader <- ifelse(row$David_advantage >= 0, "David", "Ryan")
-  cat(
-    "- ", difficulty, ": David median ",
-    scales::number(row$David, accuracy = 0.1), " minutes, Ryan median ",
-    scales::number(row$Ryan, accuracy = 0.1), " minutes. Typical pace favors ",
-    leader, " by ",
-    scales::number(abs(row$David_advantage), accuracy = 0.1), " minutes.\n",
-    sep = ""
+  summarise(
+    median_minutes = median(Solve_Time_Minutes, na.rm = TRUE),
+    lower_quartile = quantile(Solve_Time_Minutes, 0.25, na.rm = TRUE),
+    upper_quartile = quantile(Solve_Time_Minutes, 0.75, na.rm = TRUE),
+    solves = n(),
+    .groups = "drop"
   )
-})
+
+cat("The table compares typical solve times and the range containing the middle half of each player's results.\n\n")
+player_summary_table(distribution_summary, function(row) {
+  summary_cell(
+    paste("Median:", format_minutes(row$median_minutes)),
+    paste("Middle half:", format_minutes(row$lower_quartile), "to", format_minutes(row$upper_quartile)),
+    paste(row$solves, "recorded solves")
+  )
+}, "Table 5. Solve-time medians and ranges")
 ```
 
-### 6. Monthly Median Heatmap
+### 6. Monthly median solve times
 
-This compresses the timeline into monthly medians for both players, making it easier to spot plateaus, reversals, and difficulty-specific breakthroughs.
+Each cell shows a month's median solve time in minutes. The color identifies the game, and darker shading means a higher median. Use the printed values for precise comparisons, especially for Easy, where small changes can be hard to see in the shading. The current month's medians are provisional.
 
 ```{r monthly-heatmap}
 #| fig-width: 10
@@ -1067,7 +1089,7 @@ monthly_medians <- pips_data %>%
 
 ggplot(monthly_medians, aes(x = Month, y = Difficulty, fill = Difficulty, alpha = Median_Minutes)) +
   geom_tile(color = "white", linewidth = 0.7) +
-  geom_text(aes(label = scales::number(Median_Minutes, accuracy = 0.1)), size = 3) +
+  geom_text(aes(label = scales::number(Median_Minutes, accuracy = 0.01)), size = 3) +
   facet_wrap(~Player, ncol = 1) +
   scale_fill_brewer(palette = "Set1", drop = FALSE) +
   scale_alpha_continuous(range = c(0.35, 1), name = "Median minutes") +
@@ -1075,7 +1097,7 @@ ggplot(monthly_medians, aes(x = Month, y = Difficulty, fill = Difficulty, alpha 
   theme_nyt_games() +
   theme_month_axis() +
   labs(
-    title = "Monthly Median Solve Time by Player",
+    title = "Monthly median solve times",
     subtitle = "Darker cells indicate slower monthly medians",
     x = NULL,
     y = NULL
@@ -1091,33 +1113,27 @@ monthly_summary <- monthly_medians %>%
   arrange(Player, Difficulty, Month) %>%
   group_by(Player, Difficulty) %>%
   summarise(
-    best_month = Month[which.min(Median_Minutes)],
+    best_months = paste(format(Month[near(Median_Minutes, min(Median_Minutes))], "%b %Y"), collapse = ", "),
     best_median = min(Median_Minutes, na.rm = TRUE),
     latest_month = last(Month),
     latest_median = last(Median_Minutes),
     .groups = "drop"
   )
 
-cat("**Interpretation:**\n\n")
-walk(seq_len(nrow(monthly_summary)), function(i) {
-  row <- monthly_summary[i, ]
-  player <- as.character(row$Player)
-  difficulty <- as.character(row$Difficulty)
-  cat(
-    "- ", player, " / ", difficulty, ": best month was ",
-    format(row$best_month, "%b %Y"), " at ",
-    scales::number(row$best_median, accuracy = 0.1),
-    " minutes. Latest month is ",
-    scales::number(row$latest_median, accuracy = 0.1),
-    " minutes.\n",
-    sep = ""
+cat("The table lists the lowest monthly median and the latest month's median. A lowest median based on a partial month isn't a full-month record.\n\n")
+player_summary_table(monthly_summary, function(row) {
+  summary_cell(
+    paste("Lowest median:", format_minutes(row$best_median)),
+    paste("Month(s):", row$best_months),
+    paste(format(row$latest_month, "%B %Y"), "median:", format_minutes(row$latest_median)),
+    if (row$latest_month >= report_month) "Latest month is partial" else "Latest calendar month has ended"
   )
-})
+}, "Table 6. Lowest and latest monthly medians")
 ```
 
-### 7. Monthly Trend: Faster or Slower Than Last Month
+### 7. Month-to-month pace change
 
-Each bar compares a player's median solve time with the previous calendar month. Negative changes mean faster solves; positive changes mean slower solves. A dot on the zero line means the median is unchanged. David and Ryan share the same scale within each difficulty. The current month's results are provisional because it is still in progress.
+Each bar shows the change in median solve time from the previous calendar month. Below zero means faster; above zero means slower. A dot at zero means no change, not missing data. A month without data in the immediately preceding month has no comparison. Lighter bars mark the current, partial month. David and Ryan share the same vertical scale within each game.
 
 ::: {.responsive-plot-desktop}
 
@@ -1190,45 +1206,26 @@ latest_monthly_trends <- monthly_trend_data %>%
   ungroup() %>%
   arrange(Difficulty, Player)
 
-cat("**Interpretation:**\n\n")
-walk(seq_len(nrow(latest_monthly_trends)), function(i) {
-  row <- latest_monthly_trends[i, ]
-  month_label <- format(row$Month, "%B %Y")
-  if (row$Is_Partial) {
-    month_label <- paste0(month_label, " so far (through ", format(row$Last_Date, "%B %d"), ")")
-  }
-
-  cat("- ", row$Player, " / ", as.character(row$Difficulty), " / ", month_label, ": ", sep = "")
-  if (is.na(row$Change_Minutes)) {
-    cat("no previous-calendar-month data available for comparison.\n")
-    return(invisible(NULL))
-  }
-
-  if (abs(row$Change_Minutes) < 1e-9) {
-    cat("median solve time is unchanged from ", format(row$Previous_Month, "%B"), ". ", sep = "")
-  } else {
-    direction <- ifelse(row$Change_Minutes < 0, "faster", "slower")
-    cat(
-      direction, " than ", format(row$Previous_Month, "%B"), " by ",
-      scales::number(abs(row$Change_Minutes), accuracy = 0.001), " minutes",
-      if (!is.na(row$Change_Percent)) paste0(" (", scales::percent(abs(row$Change_Percent), accuracy = 0.1), ")") else "",
-      ". ", sep = ""
-    )
-  }
-
-  cat(
-    "Median ", scales::number(row$Median_Minutes, accuracy = 0.01),
-    " vs. ", scales::number(row$Previous_Median, accuracy = 0.01),
-    " minutes; ", row$Solves, " recorded solves this month.",
-    if (row$Is_Partial) " Partial-month comparison." else "",
-    "\n", sep = ""
+cat("Each player's latest month is compared with the previous calendar month in the table. Partial-month results can change substantially as more solves are recorded.\n\n")
+player_summary_table(latest_monthly_trends, function(row) {
+  percent_text <- if (!is.na(row$Change_Percent) && !near(row$Change_Minutes, 0)) {
+    paste0(" (", scales::percent(abs(row$Change_Percent), accuracy = 0.1), ")")
+  } else ""
+  previous_text <- if (is.na(row$Previous_Median)) {
+    "Previous calendar month: no recorded solves"
+  } else paste(format(row$Previous_Month, "%B %Y"), "median:", format_minutes(row$Previous_Median))
+  summary_cell(
+    paste0(pace_change(row$Change_Minutes), percent_text),
+    paste(format(row$Month, "%B %Y"), "median:", format_minutes(row$Median_Minutes)),
+    previous_text,
+    paste(row$Solves, "solves through", format(row$Last_Date, "%B %d"), if (row$Is_Partial) "(partial month)" else "")
   )
-})
+}, "Table 7. Latest month compared with the previous month")
 ```
 
-### 8. Raw Data Explorer
+### 8. Recorded results
 
-Use this table to audit specific sessions or isolate exact dates where your times spiked. This allows you to cross-reference data anomalies with your mental state (e.g., "Was I sick?" or "Did I try a new greedy algorithm today?").
+This table lists the analyzed solve times and the winners recorded in the sheet. Hard times are capped at 20 minutes here, just as they are in the charts. A recorded winner can differ from the faster analyzed time when the cap creates a tie.
 
 ```{r data-table}
 pips_data %>%
@@ -1236,6 +1233,7 @@ pips_data %>%
   select(Date, Player, Difficulty, Solve_Time_Minutes, Winner) %>%
   datatable(
     options = list(pageLength = 10, scrollX = TRUE),
+    colnames = c("Date", "Player", "Game", "Solve time (min)", "Recorded winner"),
     rownames = FALSE,
     class = 'cell-border stripe'
   ) %>%

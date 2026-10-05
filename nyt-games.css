@@ -249,6 +249,66 @@ table.dataTable.display tbody tr.odd,
   background-color: var(--nyt-subtle);
 }
 
+.report-summary {
+  max-width: 100%;
+  margin-block: 1.2rem 1.8rem;
+}
+
+.summary-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.summary-table caption {
+  caption-side: top;
+  padding-bottom: 0.65rem;
+  color: var(--nyt-muted);
+  font-size: 0.82rem;
+  text-align: left;
+}
+
+.summary-table th,
+.summary-table td {
+  padding: 0.85rem 0.9rem;
+  border-bottom: 1px solid var(--nyt-border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.summary-table thead th {
+  border-block: 1px solid var(--nyt-black);
+  font-weight: 700;
+}
+
+.summary-table th:first-child {
+  width: 15%;
+}
+
+.summary-table tbody th {
+  font-weight: 700;
+}
+
+.summary-table p {
+  margin: 0 0 0.4rem;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.summary-table p:last-child {
+  margin-bottom: 0;
+}
+
+.summary-table p > strong:first-child {
+  font-size: inherit;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .dataTables_wrapper,
 .dataTables_wrapper .dataTables_length,
 .dataTables_wrapper .dataTables_filter,
@@ -336,6 +396,20 @@ hr {
     white-space: nowrap;
     font-size: 0.82rem;
     padding: 0.34rem 0.68rem;
+  }
+
+  .summary-table {
+    font-size: 0.875rem;
+  }
+
+  .summary-table th,
+  .summary-table td {
+    padding: 0.7rem 0.4rem;
+  }
+
+  .summary-table th:first-child {
+    width: 4.5rem;
+    white-space: nowrap;
   }
 
 }
