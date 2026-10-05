@@ -261,7 +261,7 @@ plot_solve_trend <- function(
     theme_nyt_games(base_size = base_size) +
     theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
-      title = chart_title(paste("System 1 Handoff:", selected_difficulty, "Solve Speed"), title_width),
+      title = chart_title(paste("Solve Speed:", selected_difficulty), title_width),
       subtitle = chart_title("David and Ryan use the same y-axis within this game type", subtitle_width),
       x = "Date",
       y = "Solve Time (Minutes)"
@@ -463,17 +463,24 @@ plot_monthly_trend <- function(
     ggplot(aes(x = Month, y = Change_Minutes, fill = Player, alpha = Is_Partial)) +
     geom_hline(yintercept = 0, color = nyt_black, linewidth = 0.5) +
     geom_col(width = 22) +
+    geom_point(
+      data = function(data) filter(data, near(Change_Minutes, 0)),
+      shape = 21,
+      size = 2.5,
+      stroke = 0.5,
+      color = nyt_black
+    ) +
     facet_wrap(~Player, ncol = player_columns) +
     scale_fill_manual(values = c("David" = set1_colors[2], "Ryan" = set1_colors[1])) +
     scale_alpha_manual(values = c("FALSE" = 0.85, "TRUE" = 0.45)) +
     scale_month_axis() +
-    scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
+    scale_y_continuous(labels = scales::label_number(accuracy = 0.01)) +
     theme_nyt_games(base_size = base_size) +
     theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
       title = chart_title(paste("Monthly Pace Change:", selected_difficulty), title_width),
       subtitle = chart_title("Below zero is faster than the previous month; above zero is slower", subtitle_width),
-      caption = chart_title("Lighter bars show the current, partial month.", subtitle_width),
+      caption = chart_title("Dots mean no change. Lighter bars mark a partial month.", subtitle_width),
       x = "Month",
       y = "Median Change (Minutes)"
     ) +
@@ -1110,7 +1117,7 @@ walk(seq_len(nrow(monthly_summary)), function(i) {
 
 ### 7. Monthly Trend: Faster or Slower Than Last Month
 
-Each bar compares a player's median solve time with the previous calendar month. Negative changes mean faster solves; positive changes mean slower solves. David and Ryan share the same scale within each difficulty. The current month's results are provisional because it is still in progress.
+Each bar compares a player's median solve time with the previous calendar month. Negative changes mean faster solves; positive changes mean slower solves. A dot on the zero line means the median is unchanged. David and Ryan share the same scale within each difficulty. The current month's results are provisional because it is still in progress.
 
 ::: {.responsive-plot-desktop}
 
