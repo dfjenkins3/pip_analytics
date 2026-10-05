@@ -133,6 +133,7 @@ overall_winners <- winner_data %>%
   select(Date, Winner)
 
 difficulty_levels <- c("Easy", "Medium", "Hard")
+hard_time_cap_minutes <- 20
 set1_colors <- brewer.pal(9, "Set1")
 difficulty_colors <- setNames(set1_colors[seq_along(difficulty_levels)], difficulty_levels)
 minute_breaks <- c(0.1, 0.25, 0.5, 1, 2, 5, 10, 20, 60)
@@ -186,7 +187,12 @@ pips_data <- time_columns %>%
   ) %>%
   mutate(
     Difficulty = factor(Difficulty, levels = difficulty_levels),
-    Solve_Time_Seconds = as.numeric(Solve_Time_Seconds),
+    Recorded_Solve_Time_Seconds = as.numeric(Solve_Time_Seconds),
+    Solve_Time_Seconds = if_else(
+      Difficulty == "Hard",
+      pmin(Recorded_Solve_Time_Seconds, hard_time_cap_minutes * 60),
+      Recorded_Solve_Time_Seconds
+    ),
     Solve_Time_Minutes = Solve_Time_Seconds / 60,
     Month = floor_date(Date, "month")
   ) %>%
@@ -315,13 +321,21 @@ time_gap_data <- pips_data %>%
   filter(!is.na(David), !is.na(Ryan)) %>%
   mutate(
     Time_Gap_Minutes = David - Ryan,
-    Faster_Player = if_else(Time_Gap_Minutes <= 0, "David faster", "Ryan faster")
+    Faster_Player = case_when(
+      Time_Gap_Minutes < 0 ~ "David faster",
+      Time_Gap_Minutes > 0 ~ "Ryan faster",
+      TRUE ~ "Same time"
+    )
   )
 
 overall_time_gap_data <- time_gap_data %>%
   group_by(Date) %>%
   summarise(Time_Gap_Minutes = sum(Time_Gap_Minutes, na.rm = TRUE), .groups = "drop") %>%
-  mutate(Faster_Player = if_else(Time_Gap_Minutes <= 0, "David faster", "Ryan faster"))
+  mutate(Faster_Player = case_when(
+    Time_Gap_Minutes < 0 ~ "David faster",
+    Time_Gap_Minutes > 0 ~ "Ryan faster",
+    TRUE ~ "Same time"
+  ))
 
 plot_h2h_win_rate <- function(
   selected_game = "Overall",
@@ -370,7 +384,15 @@ plot_time_gap <- function(
     geom_hline(yintercept = 0, color = "grey35") +
     geom_point(alpha = 0.5, size = 1.5) +
     geom_smooth(aes(group = 1), method = "loess", span = 0.45, se = FALSE, color = "black") +
-    scale_color_manual(values = c("David faster" = set1_colors[2], "Ryan faster" = set1_colors[1])) +
+    scale_color_manual(values = c(
+      "David faster" = set1_colors[2],
+      "Ryan faster" = set1_colors[1],
+      "Same time" = "#7f7f7f"
+    )) +
+    guides(color = guide_legend(
+      nrow = if (legend_position == "bottom") 2 else 3,
+      byrow = TRUE
+    )) +
     scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
     scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
     theme_nyt_games(base_size = base_size) +
@@ -379,7 +401,7 @@ plot_time_gap <- function(
       subtitle = chart_title("Negative values favor David; positive values favor Ryan", subtitle_width),
       x = "Date",
       y = "David Minus Ryan (Minutes)",
-      color = "Leader"
+      color = if (legend_position == "bottom") NULL else "Leader"
     ) +
     theme(
       plot.title = element_text(face = "bold"),
@@ -389,6 +411,8 @@ plot_time_gap <- function(
     )
 }
 ```
+
+Hard solve times are capped at `r hard_time_cap_minutes` minutes throughout the solve-time analysis, including the time-gap comparisons and data explorer. Win rates use the winners recorded in the sheet.
     
 ### 1. Macro-Trend: Average Solve Speed Over Time
 
