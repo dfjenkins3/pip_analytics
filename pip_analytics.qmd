@@ -239,7 +239,10 @@ plot_monthly_volatility <- function(
     geom_boxplot(width = 22, alpha = 0.75, outlier.alpha = 0.55) +
     facet_wrap(~Player, ncol = player_columns) +
     scale_fill_manual(values = difficulty_colors, drop = FALSE) +
-    scale_x_date(date_labels = "%b\n%Y", date_breaks = "1 month") +
+    scale_x_date(
+      date_labels = "%b\n%Y",
+      date_breaks = if (is.finite(title_width)) "2 months" else "1 month"
+    ) +
     scale_y_log10(
       breaks = minute_breaks,
       labels = scales::label_number(accuracy = 0.1)
@@ -956,6 +959,8 @@ walk(seq_len(nrow(distribution_summary)), function(i) {
 This compresses the timeline into monthly medians for both players, making it easier to spot plateaus, reversals, and difficulty-specific breakthroughs.
 
 ```{r monthly-heatmap}
+#| fig-width: 10
+#| fig-height: 6
 monthly_medians <- pips_data %>%
   group_by(Player, Month, Difficulty) %>%
   summarise(Median_Minutes = median(Solve_Time_Minutes, na.rm = TRUE), .groups = "drop")
@@ -966,7 +971,7 @@ ggplot(monthly_medians, aes(x = Month, y = Difficulty, fill = Difficulty, alpha 
   facet_wrap(~Player, ncol = 1) +
   scale_fill_brewer(palette = "Set1", drop = FALSE) +
   scale_alpha_continuous(range = c(0.35, 1), name = "Median minutes") +
-  scale_x_date(date_labels = "%b\n%Y", date_breaks = "1 month") +
+  scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
   theme_nyt_games() +
   labs(
     title = "Monthly Median Solve Time by Player",
