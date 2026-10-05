@@ -199,6 +199,17 @@ pips_data <- time_columns %>%
   # Filter out games that don't have a recorded time
   filter(!is.na(Solve_Time_Seconds))
 
+scale_month_axis <- function() {
+  scale_x_date(
+    breaks = seq.Date(min(pips_data$Month), max(pips_data$Month), by = "month"),
+    date_labels = "%b\n%y"
+  )
+}
+
+theme_month_axis <- function(is_mobile = FALSE) {
+  theme(axis.text.x = element_text(size = if (is_mobile) 9 else 10, lineheight = 0.9))
+}
+
 monthly_trend_data <- pips_data %>%
   group_by(Player, Difficulty, Month) %>%
   summarise(
@@ -230,6 +241,7 @@ monthly_trend_data <- pips_data %>%
 # desktop = wide, side-by-side where useful; mobile portrait = 4.2 x ~7.3,
 # wrapped titles, and legends below when a right legend would steal plot width.
 # CSS switches phone landscape back to the desktop plot variant.
+# Date plots use scale_month_axis() so every recorded month is labeled.
 plot_solve_trend <- function(
   selected_difficulty,
   player_columns = 1,
@@ -244,9 +256,10 @@ plot_solve_trend <- function(
     geom_smooth(method = "loess", span = 0.4, se = TRUE) +
     facet_wrap(~Player, ncol = player_columns) +
     scale_color_manual(values = difficulty_colors, drop = FALSE) +
-    scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
+    scale_month_axis() +
     scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
     theme_nyt_games(base_size = base_size) +
+    theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
       title = chart_title(paste("System 1 Handoff:", selected_difficulty, "Solve Speed"), title_width),
       subtitle = chart_title("David and Ryan use the same y-axis within this game type", subtitle_width),
@@ -272,15 +285,13 @@ plot_monthly_volatility <- function(
     geom_boxplot(width = 22, alpha = 0.75, outlier.alpha = 0.55) +
     facet_wrap(~Player, ncol = player_columns) +
     scale_fill_manual(values = difficulty_colors, drop = FALSE) +
-    scale_x_date(
-      date_labels = "%b\n%Y",
-      date_breaks = if (is.finite(title_width)) "2 months" else "1 month"
-    ) +
+    scale_month_axis() +
     scale_y_log10(
       breaks = minute_breaks,
       labels = scales::label_number(accuracy = 0.1)
     ) +
     theme_nyt_games(base_size = base_size) +
+    theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
       title = chart_title(paste("Execution Volatility:", selected_difficulty), title_width),
       subtitle = chart_title("Log minutes reveal compression and blow-ups on the same player scale", subtitle_width),
@@ -381,9 +392,10 @@ plot_h2h_win_rate <- function(
   ggplot(plot_data, aes(x = Date, y = Rolling_Win_Rate)) +
     geom_line(color = line_color, linewidth = 1.2, na.rm = TRUE) +
     geom_hline(yintercept = 0.5, linetype = "dashed", color = set1_colors[1]) +
-    scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
+    scale_month_axis() +
     scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
     theme_nyt_games(base_size = base_size) +
+    theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
       title = chart_title(paste("10-Game Rolling Win Rate:", selected_game), title_width),
       subtitle = chart_title("Above 50% means David is ahead over the rolling window", subtitle_width),
@@ -420,9 +432,10 @@ plot_time_gap <- function(
       nrow = if (legend_position == "bottom") 2 else 3,
       byrow = TRUE
     )) +
-    scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
+    scale_month_axis() +
     scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
     theme_nyt_games(base_size = base_size) +
+    theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
       title = chart_title(paste("Daily Time Gap:", selected_game), title_width),
       subtitle = chart_title("Negative values favor David; positive values favor Ryan", subtitle_width),
@@ -453,9 +466,10 @@ plot_monthly_trend <- function(
     facet_wrap(~Player, ncol = player_columns) +
     scale_fill_manual(values = c("David" = set1_colors[2], "Ryan" = set1_colors[1])) +
     scale_alpha_manual(values = c("FALSE" = 0.85, "TRUE" = 0.45)) +
-    scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
+    scale_month_axis() +
     scale_y_continuous(labels = scales::label_number(accuracy = 0.1)) +
     theme_nyt_games(base_size = base_size) +
+    theme_month_axis(is_mobile = is.finite(title_width)) +
     labs(
       title = chart_title(paste("Monthly Pace Change:", selected_difficulty), title_width),
       subtitle = chart_title("Below zero is faster than the previous month; above zero is slower", subtitle_width),
@@ -1050,8 +1064,9 @@ ggplot(monthly_medians, aes(x = Month, y = Difficulty, fill = Difficulty, alpha 
   facet_wrap(~Player, ncol = 1) +
   scale_fill_brewer(palette = "Set1", drop = FALSE) +
   scale_alpha_continuous(range = c(0.35, 1), name = "Median minutes") +
-  scale_x_date(date_labels = "%b\n%Y", date_breaks = "2 months") +
+  scale_month_axis() +
   theme_nyt_games() +
+  theme_month_axis() +
   labs(
     title = "Monthly Median Solve Time by Player",
     subtitle = "Darker cells indicate slower monthly medians",
