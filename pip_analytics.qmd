@@ -1012,27 +1012,58 @@ plot_monthly_trend("Hard", player_columns = 1, base_size = 14, title_width = mob
 :::
 
 ```{r monthly-trend-interpretation, results='asis'}
-latest_monthly_trends <- monthly_trend_data %>%
-  group_by(Player, Difficulty) %>%
-  slice_max(Month, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
-  arrange(Difficulty, Player)
+complete_review_month <- report_month %m-% months(1)
+previous_review_month <- report_month %m-% months(2)
+monthly_review <- expand_grid(
+  Difficulty = factor(difficulty_levels, levels = difficulty_levels),
+  Player = c("David", "Ryan")
+)
 
-cat("Each player's latest month is compared with the previous calendar month in the table. Partial-month results can change substantially as more solves are recorded.\n\n")
-player_summary_table(latest_monthly_trends, function(row) {
-  percent_text <- if (!is.na(row$Change_Percent) && !near(row$Change_Minutes, 0)) {
-    paste0(" (", scales::percent(abs(row$Change_Percent), accuracy = 0.1), ")")
+review_change_text <- function(data, baseline_month) {
+  if (nrow(data) == 0) return("No recorded solves")
+  if (is.na(data$Change_Minutes)) return("No previous-month comparison")
+  percent_text <- if (!is.na(data$Change_Percent) && !near(data$Change_Minutes, 0)) {
+    paste0(" (", scales::percent(abs(data$Change_Percent), accuracy = 0.1), ")")
   } else ""
-  previous_text <- if (is.na(row$Previous_Median)) {
-    "Previous calendar month: no recorded solves"
-  } else paste(format(row$Previous_Month, "%B %Y"), "median:", format_minutes(row$Previous_Median))
-  summary_cell(
-    paste0(pace_change(row$Change_Minutes), percent_text),
-    paste(format(row$Month, "%B %Y"), "median:", format_minutes(row$Median_Minutes)),
-    previous_text,
-    paste(row$Solves, "solves through", format(row$Last_Date, "%B %d"), if (row$Is_Partial) "(partial month)" else "")
+  paste0(pace_change(data$Change_Minutes), percent_text, " vs. ", format(baseline_month, "%B"))
+}
+
+review_median_text <- function(data, month) {
+  if (nrow(data) == 0) return(paste0(format(month, "%B %Y"), ": no recorded solves"))
+  paste0(format(month, "%B %Y"), ": ", format_minutes(data$Median_Minutes),
+    " (", data$Solves, " solves)")
+}
+
+cat("The main comparison is **", format(complete_review_month, "%B %Y"),
+  " (the latest complete month)** against ", format(previous_review_month, "%B %Y"),
+  ". **", format(report_month, "%B %Y"), " so far** is shown separately for context. ",
+  "Complete means the calendar month has ended, not that every day's solve was recorded. ",
+  "Current-month results can change substantially as more solves are added.\n\n", sep = "")
+player_summary_table(monthly_review, function(row) {
+  player_months <- monthly_trend_data %>%
+    filter(Player == row$Player, Difficulty == row$Difficulty)
+  complete <- filter(player_months, Month == complete_review_month)
+  previous <- filter(player_months, Month == previous_review_month)
+  current <- filter(player_months, Month == report_month)
+  current_details <- if (nrow(current) == 0) {
+    list("No recorded solves this month")
+  } else list(
+    paste("Median:", format_minutes(current$Median_Minutes)),
+    review_change_text(current, complete_review_month),
+    paste(current$Solves, "solves through", format(current$Last_Date, "%B %d"))
   )
-}, "Table 5. Latest month compared with the previous month")
+  htmltools::tagList(
+    summary_cell(
+      review_change_text(complete, previous_review_month),
+      review_median_text(complete, complete_review_month),
+      review_median_text(previous, previous_review_month)
+    ),
+    htmltools::tags$p(class = "current-month-context",
+      htmltools::tags$strong(paste(format(report_month, "%B %Y"), "so far (partial)"))
+    ),
+    lapply(current_details, htmltools::tags$p)
+  )
+}, "Table 5. Latest complete month, previous month, and current month")
 ```
 
 ### 6. Head-to-head win rate
