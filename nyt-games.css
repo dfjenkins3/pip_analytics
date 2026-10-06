@@ -309,6 +309,26 @@ table.dataTable.display tbody tr.odd,
   text-transform: none;
 }
 
+.summary-table.statistical-summary th:first-child {
+  width: 34%;
+  white-space: normal;
+}
+
+main.content details {
+  margin-block: 1.2rem;
+  border-block: 1px solid var(--nyt-border);
+  padding-block: 0.85rem;
+}
+
+main.content summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+main.content details[open] summary {
+  margin-bottom: 1rem;
+}
+
 .dataTables_wrapper,
 .dataTables_wrapper .dataTables_length,
 .dataTables_wrapper .dataTables_filter,
@@ -376,6 +396,14 @@ hr {
     max-width: 100%;
     padding-left: 0;
     padding-right: 0;
+  }
+
+  .responsive-plot-mobile > .cell {
+    box-sizing: border-box;
+    width: calc(100vw - 18px);
+    max-width: none;
+    margin-left: calc(50% - 50vw + 9px);
+    margin-right: calc(50% - 50vw + 9px);
   }
 
   #title-block-header {

@@ -259,11 +259,11 @@ summary_cell <- function(headline, ...) {
   )
 }
 
-summary_table <- function(headers, rows, caption) {
+summary_table <- function(headers, rows, caption, statistical = FALSE) {
   htmltools::tags$div(
     class = "report-summary",
     htmltools::tags$table(
-      class = "summary-table",
+      class = if (statistical) "summary-table statistical-summary" else "summary-table",
       htmltools::tags$caption(caption),
       htmltools::tags$thead(htmltools::tags$tr(lapply(headers, function(header) {
         htmltools::tags$th(scope = "col", header)
@@ -538,6 +538,64 @@ plot_monthly_trend <- function(
     ) +
     theme(legend.position = "none")
 }
+
+source("relative_performance.R")
+hard_source <- pips_data %>%
+  filter(Difficulty == "Hard") %>%
+  select(Date, Player, Recorded_Solve_Time_Seconds) %>%
+  pivot_wider(names_from = Player, values_from = Recorded_Solve_Time_Seconds,
+    names_glue = "{Player}_Seconds")
+relative_data <- prepare_relative_pairs(as.data.frame(hard_source),
+  cap_seconds = hard_time_cap_minutes * 60, as_of = today(tzone = "America/New_York"))
+hard_pairs <- relative_data$pairs
+relative_analysis <- analyze_relative_performance(hard_pairs)
+relative_primary <- relative_analysis$primary
+hard_recorded_winners <- winner_data %>% filter(Difficulty == "Hard") %>% select(Date, Winner)
+hard_outcome_check <- as_tibble(hard_pairs) %>% left_join(hard_recorded_winners, by = "Date")
+write.csv(hard_pairs, "relative-performance-data.csv", row.names = FALSE)
+
+signed_percent <- function(value, accuracy = 0.01) {
+  paste0(ifelse(value > 0, "+", ""), scales::percent(value, accuracy = accuracy))
+}
+
+relative_conclusion <- if (relative_primary$lower <= 0 && relative_primary$upper >= 0) {
+  if (relative_primary$slope > 0) {
+    "The estimated trend points toward David taking longer relative to Ryan, but the evidence does not establish a sustained decline."
+  } else {
+    "The estimated trend points toward David taking less time relative to Ryan, but the evidence does not establish a sustained improvement."
+  }
+} else if (relative_primary$lower > 0) {
+  "The fitted trend supports David taking longer relative to Ryan over this record, under the model's assumptions."
+} else {
+  "The fitted trend supports David taking less time relative to Ryan over this record, under the model's assumptions."
+}
+
+plot_relative_performance <- function(base_size = 13, title_width = Inf,
+  subtitle_width = Inf) {
+  ggplot() +
+    geom_hline(yintercept = 1, linetype = "dashed", color = nyt_gray) +
+    geom_ribbon(data = relative_analysis$prediction,
+      aes(x = Date, ymin = Lower, ymax = Upper), fill = set1_colors[2], alpha = 0.15) +
+    geom_point(data = hard_pairs, aes(x = Date, y = exp(Log_Ratio), color = "Daily ratio"),
+      size = 1.3, alpha = 0.35) +
+    geom_line(data = relative_analysis$prediction, aes(x = Date, y = Ratio),
+      color = nyt_black, linewidth = 1) +
+    geom_point(data = relative_analysis$monthly,
+      aes(x = Month, y = Ratio, color = "Monthly geometric mean"), size = 2.8) +
+    scale_color_manual(values = c("Daily ratio" = nyt_gray,
+      "Monthly geometric mean" = set1_colors[1])) +
+    scale_month_axis() +
+    scale_y_log10(breaks = c(0.125, 0.25, 0.5, 1, 2, 4, 8, 16),
+      labels = function(values) paste0(values, "x")) +
+    theme_nyt_games(base_size = base_size) +
+    theme_month_axis(is_mobile = is.finite(title_width)) +
+    labs(title = chart_title("Hard time ratios", title_width),
+      subtitle = chart_title("Above 1x means David took longer; below 1x means Ryan took longer", subtitle_width),
+      x = "Date", y = "David / Ryan time ratio (log scale)", color = NULL) +
+    guides(color = guide_legend(nrow = 2, byrow = TRUE)) +
+    theme(legend.position = "bottom", legend.direction = "horizontal",
+      legend.box = "horizontal")
+}
 ```
 
 The report includes recorded solves from `r format(min(pips_data$Date), '%B %d, %Y')` through `r format(max(pips_data$Date), '%B %d, %Y')`. Missing times are excluded. Solve times are shown in minutes. The median represents a typical solve time and is less affected by very slow solves than the average. Table values are rounded for display; changes are calculated from unrounded medians.
@@ -741,9 +799,245 @@ player_summary_table(volatility_summary, function(row) {
 }, "Table 2. Monthly variation in solve times")
 ```
     
-### 3. Head-to-head win rate
+### 3. Solve-time distribution
 
-The line shows David's share of wins in the last 10 recorded results. Above 50% means David won more than half of those results. A tie counts as a non-win for both players, so a value below 50% doesn't always mean Ryan won a majority. The Overall tab uses the sheet's daily overall winner; the other tabs use the winner for that game. This is a recent win rate, not a forecast.
+The shapes summarize all recorded times, without showing when they occurred. Wider sections mean more solves near that time. The box inside each shape shows the middle half of times and the median. The vertical axis is logarithmic, as in the monthly consistency chart. Each player's summary includes their own recorded solves, so the medians aren't restricted to matched days.
+
+::: {.responsive-plot-desktop}
+
+::: {.panel-tabset}
+
+#### Easy
+
+```{r player-distribution-easy-desktop}
+#| fig-width: 10
+#| fig-height: 4.6
+plot_player_distribution("Easy", base_size = 13)
+```
+
+#### Medium
+
+```{r player-distribution-medium-desktop}
+#| fig-width: 10
+#| fig-height: 4.6
+plot_player_distribution("Medium", base_size = 13)
+```
+
+#### Hard
+
+```{r player-distribution-hard-desktop}
+#| fig-width: 10
+#| fig-height: 4.6
+plot_player_distribution("Hard", base_size = 13)
+```
+
+:::
+
+:::
+
+::: {.responsive-plot-mobile}
+
+::: {.panel-tabset}
+
+#### Easy
+
+```{r player-distribution-easy-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.4
+plot_player_distribution("Easy", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
+```
+
+#### Medium
+
+```{r player-distribution-medium-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.4
+plot_player_distribution("Medium", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
+```
+
+#### Hard
+
+```{r player-distribution-hard-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.4
+plot_player_distribution("Hard", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
+```
+
+:::
+
+:::
+
+```{r player-distribution-interpretation, results='asis'}
+distribution_summary <- pips_data %>%
+  group_by(Difficulty, Player) %>%
+  summarise(
+    median_minutes = median(Solve_Time_Minutes, na.rm = TRUE),
+    lower_quartile = quantile(Solve_Time_Minutes, 0.25, na.rm = TRUE),
+    upper_quartile = quantile(Solve_Time_Minutes, 0.75, na.rm = TRUE),
+    solves = n(),
+    .groups = "drop"
+  )
+
+cat("The table compares typical solve times and the range containing the middle half of each player's results.\n\n")
+player_summary_table(distribution_summary, function(row) {
+  summary_cell(
+    paste("Median:", format_minutes(row$median_minutes)),
+    paste("Middle half:", format_minutes(row$lower_quartile), "to", format_minutes(row$upper_quartile)),
+    paste(row$solves, "recorded solves")
+  )
+}, "Table 3. Solve-time medians and ranges")
+```
+
+### 4. Monthly median solve times
+
+Each cell shows a month's median solve time in minutes. The color identifies the game, and darker shading means a higher median. Use the printed values for precise comparisons, especially for Easy, where small changes can be hard to see in the shading. The current month's medians are provisional.
+
+```{r monthly-heatmap}
+#| fig-width: 10
+#| fig-height: 6
+monthly_medians <- pips_data %>%
+  group_by(Player, Month, Difficulty) %>%
+  summarise(Median_Minutes = median(Solve_Time_Minutes, na.rm = TRUE), .groups = "drop")
+
+ggplot(monthly_medians, aes(x = Month, y = Difficulty, fill = Difficulty, alpha = Median_Minutes)) +
+  geom_tile(color = "white", linewidth = 0.7) +
+  geom_text(aes(label = scales::number(Median_Minutes, accuracy = 0.01)), size = 3) +
+  facet_wrap(~Player, ncol = 1) +
+  scale_fill_brewer(palette = "Set1", drop = FALSE) +
+  scale_alpha_continuous(range = c(0.35, 1), name = "Median minutes") +
+  scale_month_axis() +
+  theme_nyt_games() +
+  theme_month_axis() +
+  labs(
+    title = "Monthly median solve times",
+    subtitle = "Darker cells indicate slower monthly medians",
+    x = NULL,
+    y = NULL
+  ) +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(face = "bold")
+  )
+```
+
+```{r monthly-heatmap-interpretation, results='asis'}
+monthly_summary <- monthly_medians %>%
+  arrange(Player, Difficulty, Month) %>%
+  group_by(Player, Difficulty) %>%
+  summarise(
+    best_months = paste(format(Month[near(Median_Minutes, min(Median_Minutes))], "%b %Y"), collapse = ", "),
+    best_median = min(Median_Minutes, na.rm = TRUE),
+    latest_month = last(Month),
+    latest_median = last(Median_Minutes),
+    .groups = "drop"
+  )
+
+cat("The table lists the lowest monthly median and the latest month's median. A lowest median based on a partial month isn't a full-month record.\n\n")
+player_summary_table(monthly_summary, function(row) {
+  summary_cell(
+    paste("Lowest median:", format_minutes(row$best_median)),
+    paste("Month(s):", row$best_months),
+    paste(format(row$latest_month, "%B %Y"), "median:", format_minutes(row$latest_median)),
+    if (row$latest_month >= report_month) "Latest month is partial" else "Latest calendar month has ended"
+  )
+}, "Table 4. Lowest and latest monthly medians")
+```
+
+### 5. Month-to-month pace change
+
+Each bar shows the change in median solve time from the previous calendar month. Below zero means faster; above zero means slower. A dot at zero means no change, not missing data. A month without data in the immediately preceding month has no comparison. Lighter bars mark the current, partial month. David and Ryan share the same vertical scale within each game.
+
+::: {.responsive-plot-desktop}
+
+::: {.panel-tabset}
+
+#### Easy
+
+```{r monthly-trend-easy-desktop}
+#| fig-width: 10
+#| fig-height: 5
+plot_monthly_trend("Easy")
+```
+
+#### Medium
+
+```{r monthly-trend-medium-desktop}
+#| fig-width: 10
+#| fig-height: 5
+plot_monthly_trend("Medium")
+```
+
+#### Hard
+
+```{r monthly-trend-hard-desktop}
+#| fig-width: 10
+#| fig-height: 5
+plot_monthly_trend("Hard")
+```
+
+:::
+
+:::
+
+::: {.responsive-plot-mobile}
+
+::: {.panel-tabset}
+
+#### Easy
+
+```{r monthly-trend-easy-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.4
+plot_monthly_trend("Easy", player_columns = 1, base_size = 14, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
+```
+
+#### Medium
+
+```{r monthly-trend-medium-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.4
+plot_monthly_trend("Medium", player_columns = 1, base_size = 14, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
+```
+
+#### Hard
+
+```{r monthly-trend-hard-mobile}
+#| fig-width: 4.2
+#| fig-height: 7.4
+plot_monthly_trend("Hard", player_columns = 1, base_size = 14, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
+```
+
+:::
+
+:::
+
+```{r monthly-trend-interpretation, results='asis'}
+latest_monthly_trends <- monthly_trend_data %>%
+  group_by(Player, Difficulty) %>%
+  slice_max(Month, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  arrange(Difficulty, Player)
+
+cat("Each player's latest month is compared with the previous calendar month in the table. Partial-month results can change substantially as more solves are recorded.\n\n")
+player_summary_table(latest_monthly_trends, function(row) {
+  percent_text <- if (!is.na(row$Change_Percent) && !near(row$Change_Minutes, 0)) {
+    paste0(" (", scales::percent(abs(row$Change_Percent), accuracy = 0.1), ")")
+  } else ""
+  previous_text <- if (is.na(row$Previous_Median)) {
+    "Previous calendar month: no recorded solves"
+  } else paste(format(row$Previous_Month, "%B %Y"), "median:", format_minutes(row$Previous_Median))
+  summary_cell(
+    paste0(pace_change(row$Change_Minutes), percent_text),
+    paste(format(row$Month, "%B %Y"), "median:", format_minutes(row$Median_Minutes)),
+    previous_text,
+    paste(row$Solves, "solves through", format(row$Last_Date, "%B %d"), if (row$Is_Partial) "(partial month)" else "")
+  )
+}, "Table 5. Latest month compared with the previous month")
+```
+
+### 6. Head-to-head win rate
+
+A win rate summarizes head-to-head results without measuring the size of the time difference. The line shows David's share of wins in the last 10 recorded results. Above 50% means David won more than half of those results. A tie counts as a non-win for both players, so a value below 50% doesn't always mean Ryan won a majority. The Overall tab uses the sheet's daily overall winner; the other tabs use the winner for that game. This is a recent win rate, not a forecast.
     
 ::: {.responsive-plot-desktop}
 
@@ -864,12 +1158,12 @@ win_rows <- lapply(seq_len(nrow(win_record)), function(i) {
     )
   )
 })
-summary_table(c("Game", "All recorded results", "Last 10 results"), win_rows, "Table 3. Recorded wins and recent win rates")
+summary_table(c("Game", "All recorded results", "Last 10 results"), win_rows, "Table 6. Recorded wins and recent win rates")
 ```
 
-### 4. Daily time gap
+### 7. Daily time gap
 
-The gap is David's time minus Ryan's time for the same date and game. Negative values mean David was faster; positive values mean Ryan was faster. Zero means equal analyzed times, including ties created by the Hard cap. Only games with both players' times are included. The Overall tab adds the gaps for the matched games on each date; a day with missing times can include fewer than three games.
+A small time advantage and a large one count equally as wins. The daily gap shows the size of the difference: David's time minus Ryan's time for the same date and game. Negative values mean David was faster; positive values mean Ryan was faster. Zero means equal analyzed times, including ties created by the Hard cap. Only games with both players' times are included. The Overall tab adds the gaps for the matched games on each date; a day with missing times can include fewer than three games.
 
 ::: {.responsive-plot-desktop}
 
@@ -984,246 +1278,212 @@ gap_rows <- lapply(seq_len(nrow(gap_summary)), function(i) {
     )
   )
 })
-summary_table(c("Game", "Median daily gap", "Share of matched days"), gap_rows, "Table 4. Same-day solve-time comparisons")
+summary_table(c("Game", "Median daily gap", "Share of matched days"), gap_rows, "Table 7. Same-day solve-time comparisons")
 ```
 
-### 5. Solve-time distribution
+### 8. Is relative Hard performance changing?
 
-The shapes summarize all recorded times, without showing when they occurred. Wider sections mean more solves near that time. The box inside each shape shows the middle half of times and the median. The vertical axis is logarithmic, as in the monthly consistency chart. Each player's summary includes their own recorded solves, so the medians aren't restricted to matched days.
+The daily gap shows who took longer on a shared puzzle. This analysis asks a different question: has David's time **relative to Ryan's** changed over the full record? It uses only Hard puzzles with a positive recorded time for both players, capped at 20 minutes each.
+
+```{r relative-primary-summary, results='asis'}
+cat("**", relative_conclusion, "**\n\n", sep = "")
+cat("The test includes ", nrow(hard_pairs), " shared Hard puzzles from ",
+  format(min(hard_pairs$Date), "%B %d, %Y"), " through ",
+  format(max(hard_pairs$Date), "%B %d, %Y"),
+  ". Days without both times are excluded.\n\n", sep = "")
+summary_table(c("Primary result", "Estimate"), list(
+  list("Change in David/Ryan time ratio per 30 days", signed_percent(expm1(relative_primary$slope))),
+  list("95% confidence interval", paste(signed_percent(expm1(relative_primary$lower)), "to", signed_percent(expm1(relative_primary$upper)))),
+  list("Two-sided p-value", scales::number(relative_primary$p_value, accuracy = 0.001))
+), "Table 8. Full-record relative-time trend", statistical = TRUE)
+```
+
+For day $d$, let $D_d$ and $R_d$ be David's and Ryan's recorded times in seconds. The outcome is the log of the capped time ratio:
+
+$$
+y_d = \ln\!\left(\frac{\min(D_d,1200)}{\min(R_d,1200)}\right).
+$$
+
+The test fits a straight-line trend in this log ratio over calendar time. A positive slope means David's relative time increased; a negative slope means it decreased. The reported percentage is $100(e^{\beta}-1)$, where $\beta$ is the change in log ratio per 30 days. It is a proportional change in the time ratio, not a change in win probability.
 
 ::: {.responsive-plot-desktop}
 
-::: {.panel-tabset}
-
-#### Easy
-
-```{r player-distribution-easy-desktop}
+```{r relative-hard-desktop}
 #| fig-width: 10
-#| fig-height: 4.6
-plot_player_distribution("Easy", base_size = 13)
+#| fig-height: 5.4
+#| fig-alt: "David-to-Ryan capped Hard time ratios by date, with monthly geometric means, a fitted trend, and its pointwise 95% confidence band. A ratio above one means David took longer."
+plot_relative_performance()
 ```
-
-#### Medium
-
-```{r player-distribution-medium-desktop}
-#| fig-width: 10
-#| fig-height: 4.6
-plot_player_distribution("Medium", base_size = 13)
-```
-
-#### Hard
-
-```{r player-distribution-hard-desktop}
-#| fig-width: 10
-#| fig-height: 4.6
-plot_player_distribution("Hard", base_size = 13)
-```
-
-:::
 
 :::
 
 ::: {.responsive-plot-mobile}
 
-::: {.panel-tabset}
-
-#### Easy
-
-```{r player-distribution-easy-mobile}
+```{r relative-hard-mobile}
 #| fig-width: 4.2
 #| fig-height: 7.4
-plot_player_distribution("Easy", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
-```
-
-#### Medium
-
-```{r player-distribution-medium-mobile}
-#| fig-width: 4.2
-#| fig-height: 7.4
-plot_player_distribution("Medium", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
-```
-
-#### Hard
-
-```{r player-distribution-hard-mobile}
-#| fig-width: 4.2
-#| fig-height: 7.4
-plot_player_distribution("Hard", base_size = 15, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
+#| fig-alt: "David-to-Ryan capped Hard time ratios by date, with monthly geometric means, a fitted trend, and its pointwise 95% confidence band. A ratio above one means David took longer."
+plot_relative_performance(base_size = 14, title_width = mobile_title_width,
+  subtitle_width = mobile_subtitle_width)
 ```
 
 :::
 
-:::
+A ratio of 1 means equal capped times. Above 1 means David took longer; below 1 means Ryan took longer. The black line is the fitted trend. Its shaded band is a pointwise 95% confidence interval for the fitted mean log ratio, converted back to ratios. It is not a prediction interval for the next puzzle. The monthly points are geometric means of the individual puzzle ratios, not ratios of the players' separate monthly medians.
 
-```{r player-distribution-interpretation, results='asis'}
-distribution_summary <- pips_data %>%
-  group_by(Difficulty, Player) %>%
-  summarise(
-    median_minutes = median(Solve_Time_Minutes, na.rm = TRUE),
-    lower_quartile = quantile(Solve_Time_Minutes, 0.25, na.rm = TRUE),
-    upper_quartile = quantile(Solve_Time_Minutes, 0.75, na.rm = TRUE),
-    solves = n(),
-    .groups = "drop"
-  )
-
-cat("The table compares typical solve times and the range containing the middle half of each player's results.\n\n")
-player_summary_table(distribution_summary, function(row) {
-  summary_cell(
-    paste("Median:", format_minutes(row$median_minutes)),
-    paste("Middle half:", format_minutes(row$lower_quartile), "to", format_minutes(row$upper_quartile)),
-    paste(row$solves, "recorded solves")
-  )
-}, "Table 5. Solve-time medians and ranges")
+```{r relative-interpretation, results='asis'}
+if (relative_primary$lower <= 0 && relative_primary$upper >= 0) {
+  cat("The confidence interval includes improvement, no change, and deterioration. The result is inconclusive; it does not establish that performance stayed unchanged.\n\n")
+} else {
+  cat("The confidence interval excludes no change under this model. That supports a trend across the recorded period, not a guarantee that it will continue.\n\n")
+}
+cat("The p-value is not the probability that David is getting worse or that there is no trend. It describes how unusual an estimated slope this far from zero would be if the no-trend hypothesis and model assumptions held.\n\n")
 ```
 
-### 6. Monthly median solve times
+#### How sensitive is the conclusion?
 
-Each cell shows a month's median solve time in minutes. The color identifies the game, and darker shading means a higher median. Use the printed values for precise comparisons, especially for Easy, where small changes can be hard to see in the shading. The current month's medians are provisional.
+The following checks change the dependence window or the dates included. The full-record, seven-day test remains the main comparison. The April and recent-90-day windows are exploratory; they are not independent confirmations of the main result.
 
-```{r monthly-heatmap}
-#| fig-width: 10
-#| fig-height: 6
-monthly_medians <- pips_data %>%
-  group_by(Player, Month, Difficulty) %>%
-  summarise(Median_Minutes = median(Solve_Time_Minutes, na.rm = TRUE), .groups = "drop")
-
-ggplot(monthly_medians, aes(x = Month, y = Difficulty, fill = Difficulty, alpha = Median_Minutes)) +
-  geom_tile(color = "white", linewidth = 0.7) +
-  geom_text(aes(label = scales::number(Median_Minutes, accuracy = 0.01)), size = 3) +
-  facet_wrap(~Player, ncol = 1) +
-  scale_fill_brewer(palette = "Set1", drop = FALSE) +
-  scale_alpha_continuous(range = c(0.35, 1), name = "Median minutes") +
-  scale_month_axis() +
-  theme_nyt_games() +
-  theme_month_axis() +
-  labs(
-    title = "Monthly median solve times",
-    subtitle = "Darker cells indicate slower monthly medians",
-    x = NULL,
-    y = NULL
-  ) +
-  theme(
-    legend.position = "right",
-    plot.title = element_text(face = "bold")
-  )
+```{r relative-sensitivity, results='asis'}
+checks <- relative_analysis$checks
+check_rows <- lapply(seq_len(nrow(checks)), function(i) {
+  row <- checks[i, ]
+  label <- row$Check
+  if (label == "Exclude latest calendar month") {
+    label <- paste("Exclude", format(max(hard_pairs$Date), "%B %Y"))
+  }
+  list(label, summary_cell(
+    paste(signed_percent(row$Change), "per 30 days"),
+    paste("95% CI:", signed_percent(row$Lower), "to", signed_percent(row$Upper)),
+    paste("p =", scales::number(row$P, accuracy = 0.001), ";", row$Pairs, "shared puzzles")
+  ))
+})
+bootstrap <- relative_analysis$bootstrap
+check_rows <- c(check_rows, list(list("Seven-game block bootstrap", summary_cell(
+  paste("95% CI:", signed_percent(expm1(bootstrap$lower)), "to", signed_percent(expm1(bootstrap$upper))),
+  paste(scales::comma(bootstrap$replicates), "resamples; fixed calendar dates"),
+  "Supporting uncertainty check; no separate p-value"
+))))
+summary_table(c("Check", "Relative-time result"), check_rows,
+  "Table 9. Sensitivity of the estimated relative-time trend", statistical = TRUE)
+all_include_zero <- all(checks$Lower <= 0 & checks$Upper >= 0) &&
+  bootstrap$lower <= 0 && bootstrap$upper >= 0
+cat(if (all_include_zero) {
+  "Every interval above includes no change. These checks do not establish a sustained relative-time trend.\n\n"
+} else {
+  "The intervals do not all reach the same conclusion. Treat the differences as sensitivity to the method or date window, not as a reason to select the lowest p-value.\n\n"
+})
 ```
 
-```{r monthly-heatmap-interpretation, results='asis'}
-monthly_summary <- monthly_medians %>%
-  arrange(Player, Difficulty, Month) %>%
-  group_by(Player, Difficulty) %>%
-  summarise(
-    best_months = paste(format(Month[near(Median_Minutes, min(Median_Minutes))], "%b %Y"), collapse = ", "),
-    best_median = min(Median_Minutes, na.rm = TRUE),
-    latest_month = last(Month),
-    latest_median = last(Median_Minutes),
-    .groups = "drop"
-  )
+The supporting win test recomputes winners from capped times and excludes ties. It therefore differs from the earlier win-rate charts, which use the sheet's recorded winners. A logistic regression estimates the change in David's odds of winning per 30 days. An odds multiplier below 1 means declining odds, not a fixed percentage-point drop in win rate.
 
-cat("The table lists the lowest monthly median and the latest month's median. A lowest median based on a partial month isn't a full-month record.\n\n")
-player_summary_table(monthly_summary, function(row) {
-  summary_cell(
-    paste("Lowest median:", format_minutes(row$best_median)),
-    paste("Month(s):", row$best_months),
-    paste(format(row$latest_month, "%B %Y"), "median:", format_minutes(row$latest_median)),
-    if (row$latest_month >= report_month) "Latest month is partial" else "Latest calendar month has ended"
-  )
-}, "Table 6. Lowest and latest monthly medians")
+```{r relative-supporting-tests, results='asis'}
+wins <- relative_analysis$wins
+gap <- relative_analysis$time_gap
+summary_table(c("Supporting test", "Estimate"), list(
+  list("David's win odds per 30 days", summary_cell(
+    paste0(scales::number(exp(wins$slope), accuracy = 0.001), "x"),
+    paste("95% CI:", scales::number(exp(wins$lower), accuracy = 0.001), "to", scales::number(exp(wins$upper), accuracy = 0.001)),
+    paste("p =", scales::number(wins$p_value, accuracy = 0.001), ";", wins$n, "decisive games")
+  )),
+  list("David-minus-Ryan gap per 30 days", summary_cell(
+    paste0(if (gap$slope > 0) "+" else "", format_minutes(gap$slope, 0.001)),
+    paste("95% CI:", format_minutes(gap$lower, 0.001), "to", format_minutes(gap$upper, 0.001)),
+    paste("p =", scales::number(gap$p_value, accuracy = 0.001), ";", gap$n, "shared puzzles")
+  ))
+), "Table 10. Trends in capped-time wins and daily gaps", statistical = TRUE)
+if (wins$lower <= 0 && wins$upper >= 0) {
+  cat("The win-odds interval includes 1, so this supporting test is also inconclusive about a trend.\n\n")
+}
 ```
 
-### 7. Month-to-month pace change
+#### What does the history show?
 
-Each bar shows the change in median solve time from the previous calendar month. Below zero means faster; above zero means slower. A dot at zero means no change, not missing data. A month without data in the immediately preceding month has no comparison. Lighter bars mark the current, partial month. David and Ryan share the same vertical scale within each game.
+These periods summarize the observed puzzle ratios; they are not separate trend tests. A geometric mean near 1 indicates similar times, while a value above 1 indicates that David took longer. The latest period can contain only a few shared puzzles.
 
-::: {.responsive-plot-desktop}
-
-::: {.panel-tabset}
-
-#### Easy
-
-```{r monthly-trend-easy-desktop}
-#| fig-width: 10
-#| fig-height: 5
-plot_monthly_trend("Easy")
+```{r relative-periods, results='asis'}
+periods <- relative_analysis$periods
+period_rows <- lapply(seq_len(nrow(periods)), function(i) {
+  row <- periods[i, ]
+  list(row$Period, row$Pairs, paste0(scales::number(row$Ratio, accuracy = 0.001), "x"))
+})
+summary_table(c("Period", "Shared puzzles", "David/Ryan time ratio"), period_rows,
+  "Table 11. Geometric mean of within-puzzle time ratios", statistical = TRUE)
+latest <- tail(relative_analysis$monthly, 1)
+cat(format(latest$Month, "%B %Y"), " has ", latest$Pairs,
+  " shared puzzles through ", format(max(hard_pairs$Date), "%B %d"),
+  ", with a geometric mean ratio of ", scales::number(latest$Ratio, accuracy = 0.001),
+  "x. This describes those games; it does not establish a lasting change.\n\n", sep = "")
+if (nrow(periods) >= 3 && abs(log(periods$Ratio[3])) < abs(log(periods$Ratio[2]))) {
+  cat("July-September was closer to time parity than April-June. That recovery makes a simple story of steadily losing ground a poor description of this record.\n\n")
+}
 ```
 
-#### Medium
+<details>
+<summary>Monthly paired results</summary>
 
-```{r monthly-trend-medium-desktop}
-#| fig-width: 10
-#| fig-height: 5
-plot_monthly_trend("Medium")
+The table uses only shared Hard puzzles. Winners are recomputed after capping; ties are listed separately.
+
+```{r relative-monthly-results, results='asis'}
+monthly <- relative_analysis$monthly
+monthly_rows <- lapply(seq_len(nrow(monthly)), function(i) {
+  row <- monthly[i, ]
+  list(format(row$Month, "%b %Y"), summary_cell(
+    paste(row$Pairs, "shared puzzles"),
+    paste("David:", row$David_Wins, "wins; Ryan:", row$Ryan_Wins, "wins; ties:", row$Ties)
+  ), summary_cell(
+    paste0(scales::number(row$Ratio, accuracy = 0.001), "x geometric mean"),
+    paste0(scales::number(row$Median_Ratio, accuracy = 0.001), "x median ratio")
+  ))
+})
+summary_table(c("Month", "Capped-time results", "David/Ryan ratio"), monthly_rows,
+  "Table 12. Monthly relative Hard results", statistical = TRUE)
 ```
 
-#### Hard
+</details>
 
-```{r monthly-trend-hard-desktop}
-#| fig-width: 10
-#| fig-height: 5
-plot_monthly_trend("Hard")
+<details>
+<summary>Methods, assumptions, and data checks</summary>
+
+The model fits $y_d = \alpha + \beta t_d + \epsilon_d$, where $t_d$ is calendar days since the first shared puzzle, divided by 30. The null hypothesis is $\beta = 0$; the test is two-sided. Confidence intervals use a normal reference distribution, so the inference is approximate and depends on the model's assumptions.
+
+Newey-West uncertainty estimates allow unequal residual variation and short-term dependence. The main test uses Bartlett weights, a seven-calendar-day lag window, and an $n/(n-2)$ finite-sample correction. Missing dates contribute zero score vectors to the covariance calculation, not invented solve times or fitted observations. The win-odds model uses the same calendar-aware covariance method.
+
+The bootstrap uses 10,000 circular residual resamples, blocks of seven successive shared games, seed 20261005, and a basic 95% interval. Calendar dates stay fixed. It assumes the residual process is approximately stationary around the fitted trend. R's random-number generator differs from the attachment's Python implementation, so bootstrap endpoints can differ slightly even with the same seed.
+
+Comparing two times for the same puzzle reduces the effect of shared difficulty **if it changes both times proportionally**. Puzzle styles can still favor one player, and capping compresses large differences. Relative results cannot distinguish Ryan improving from David declining. These are retrospective analyses, not preregistered tests; repeated checks and selected date windows can give misleadingly small p-values.
+
+```{r relative-data-checks, results='asis'}
+excluded_dates <- relative_data$excluded$Date
+audit_rows <- list(
+  list("Paired records used", nrow(hard_pairs)),
+  list("Hard dates excluded", if (length(excluded_dates)) paste(format(sort(excluded_dates), "%b %d, %Y"), collapse = "; ") else "None"),
+  list("Recorded times above 20 minutes", paste("David:", sum(hard_pairs$David_Was_Capped), "; Ryan:", sum(hard_pairs$Ryan_Was_Capped))),
+  list("Analyzed times at the cap", paste("David:", sum(hard_pairs$David_Seconds == 1200), "; Ryan:", sum(hard_pairs$Ryan_Seconds == 1200))),
+  list("Both players at the cap", sum(hard_pairs$David_Seconds == 1200 & hard_pairs$Ryan_Seconds == 1200)),
+  list("Capped-time outcomes", paste("David:", sum(hard_pairs$Capped_Winner == "David"), "wins; Ryan:", sum(hard_pairs$Capped_Winner == "Ryan"), "wins; ties:", sum(hard_pairs$Capped_Winner == "Tie"))),
+  list("Outcomes changed by capping", sum(hard_outcome_check$Winner != hard_outcome_check$Capped_Winner, na.rm = TRUE))
+)
+summary_table(c("Data check", "Result"), audit_rows,
+  "Table 13. Paired Hard data checks", statistical = TRUE)
 ```
 
-:::
+The source sheet is unchanged. The downloaded data contain capped times, not the original over-cap durations. [Paired data (CSV)](relative-performance-data.csv) and [analysis code (R)](relative_performance.R) reproduce the tests without Google credentials:
 
-:::
-
-::: {.responsive-plot-mobile}
-
-::: {.panel-tabset}
-
-#### Easy
-
-```{r monthly-trend-easy-mobile}
-#| fig-width: 4.2
-#| fig-height: 7.4
-plot_monthly_trend("Easy", player_columns = 1, base_size = 14, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
+```r
+source("relative_performance.R")
+pairs <- read.csv("relative-performance-data.csv")
+results <- analyze_relative_performance(pairs)
+results$checks
 ```
 
-#### Medium
+Method references: [Newey-West covariance](https://www.statsmodels.org/stable/generated/statsmodels.stats.sandwich_covariance.cov_hac.html), [reference covariance implementation](https://www.statsmodels.org/stable/_modules/statsmodels/stats/sandwich_covariance.html), and [R's block-bootstrap documentation](https://stat.ethz.ch/R-manual/R-devel/library/boot/html/tsboot.html). Regression uses R's `lm()` and `glm()`; block resampling uses `boot::tsboot()`.
 
-```{r monthly-trend-medium-mobile}
-#| fig-width: 4.2
-#| fig-height: 7.4
-plot_monthly_trend("Medium", player_columns = 1, base_size = 14, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
-```
+For the next review, keep the same ratio and cap, choose a future review date before examining the new results, and assess the confidence interval then. This avoids treating each disappointing game as a new statistical verdict.
 
-#### Hard
+</details>
 
-```{r monthly-trend-hard-mobile}
-#| fig-width: 4.2
-#| fig-height: 7.4
-plot_monthly_trend("Hard", player_columns = 1, base_size = 14, title_width = mobile_title_width, subtitle_width = mobile_subtitle_width)
-```
-
-:::
-
-:::
-
-```{r monthly-trend-interpretation, results='asis'}
-latest_monthly_trends <- monthly_trend_data %>%
-  group_by(Player, Difficulty) %>%
-  slice_max(Month, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
-  arrange(Difficulty, Player)
-
-cat("Each player's latest month is compared with the previous calendar month in the table. Partial-month results can change substantially as more solves are recorded.\n\n")
-player_summary_table(latest_monthly_trends, function(row) {
-  percent_text <- if (!is.na(row$Change_Percent) && !near(row$Change_Minutes, 0)) {
-    paste0(" (", scales::percent(abs(row$Change_Percent), accuracy = 0.1), ")")
-  } else ""
-  previous_text <- if (is.na(row$Previous_Median)) {
-    "Previous calendar month: no recorded solves"
-  } else paste(format(row$Previous_Month, "%B %Y"), "median:", format_minutes(row$Previous_Median))
-  summary_cell(
-    paste0(pace_change(row$Change_Minutes), percent_text),
-    paste(format(row$Month, "%B %Y"), "median:", format_minutes(row$Median_Minutes)),
-    previous_text,
-    paste(row$Solves, "solves through", format(row$Last_Date, "%B %d"), if (row$Is_Partial) "(partial month)" else "")
-  )
-}, "Table 7. Latest month compared with the previous month")
-```
-
-### 8. Recorded results
+### 9. Recorded results
 
 This table lists the analyzed solve times and the winners recorded in the sheet. Hard times are capped at 20 minutes here, just as they are in the charts. A recorded winner can differ from the faster analyzed time when the cap creates a tie.
 
